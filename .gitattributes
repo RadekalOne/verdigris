@@ -1,0 +1,12 @@
+# Windows batch files must stay CRLF or they will not run. Everything else in
+# the project is authored with LF and stays that way.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.js text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+
+# binaries
+*.png binary
+*.ico binary

@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>VERDIGRIS — A Survey of the Copper Country</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230d100c'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23e8b34a' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23e8b34a'/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0c0e0b; --panel:#151914; --panel2:#1c211a; --line:#2f382c; --line2:#445039;
+    --ink:#d6d1c3; --dim:#8a8578; --faint:#5d5a50;
+    --amber:#e8b34a; --cyan:#7fc4d8; --violet:#c08ce0; --rust:#d06a4a; --green:#93b45a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font:13px/1.45 "Consolas","SF Mono",Menlo,monospace;-webkit-font-smoothing:antialiased}
+  #wrap{position:fixed;inset:0}
+  canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:none}
+
+  .panel{position:absolute;background:rgba(21,25,20,.97);border:1px solid var(--line);
+    box-shadow:0 0 0 1px rgba(0,0,0,.5),0 18px 50px rgba(0,0,0,.6);display:none;flex-direction:column}
+  .panel.on{display:flex}
+  .panel h2{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--amber);
+    padding:9px 12px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#1b2019,#141812);
+    display:flex;justify-content:space-between;align-items:center;font-weight:600}
+  .panel h2 small{color:var(--faint);letter-spacing:.1em;font-weight:400;text-transform:none}
+  .pbody{padding:11px 12px;overflow:auto;flex:1}
+  .pbody::-webkit-scrollbar{width:9px}
+  .pbody::-webkit-scrollbar-thumb{background:var(--line2);border:2px solid var(--panel)}
+  .pbody::-webkit-scrollbar-track{background:#0f120e}
+
+  /* ---- HUD ---- */
+  #hud{position:absolute;inset:0;pointer-events:none}
+  .card{background:rgba(12,14,11,.82);border:1px solid var(--line);padding:7px 9px}
+  #stats{position:absolute;left:10px;top:10px;width:198px}
+  #stats .row{display:flex;align-items:center;gap:6px;margin:3px 0}
+  #stats .lbl{width:52px;font-size:10px;letter-spacing:.09em;color:var(--dim);text-transform:uppercase}
+  .bar{flex:1;height:7px;background:#20251d;border:1px solid var(--line);position:relative;overflow:hidden}
+  .bar i{display:block;height:100%;width:0;transition:width .18s}
+  .bar .num{position:absolute;right:3px;top:-1px;font-size:9px;color:var(--ink);opacity:.75}
+  .fill-stam i{background:linear-gradient(90deg,#5d7f3a,#93b45a)}
+  .fill-food i{background:linear-gradient(90deg,#8a5a2a,#d09a4a)}
+  .fill-water i{background:linear-gradient(90deg,#2a6a8a,#7fc4d8)}
+  .fill-dose i{background:linear-gradient(90deg,#5f7a2a,#a8c24a)}
+  .fill-dose.hot i{background:linear-gradient(90deg,#7a4a2a,#d09a4a)}
+  .fill-dose.crit i{background:linear-gradient(90deg,#8a2a2a,#d06a4a)}
+  .bar.low i{animation:beat 1.15s ease-in-out infinite}
+  .bar.crit i{animation:beat .6s ease-in-out infinite}
+  .fill-stam.low i{background:linear-gradient(90deg,#7a4a2a,#d09a4a)}
+  .fill-food.low i{background:linear-gradient(90deg,#7a3a2a,#d06a4a)}
+  .fill-water.low i{background:linear-gradient(90deg,#7a3a2a,#d06a4a)}
+  @keyframes beat{0%,100%{opacity:1}50%{opacity:.3}}
+  #needs-warn{margin-top:6px;padding-top:5px;border-top:1px solid var(--line);
+    color:var(--rust);font-size:9px;letter-spacing:.12em;text-transform:uppercase;display:none;line-height:1.6}
+  #needs-warn.show{display:block}
+  #rep{position:absolute;left:10px;top:150px;width:198px}
+  #rep .r{display:flex;justify-content:space-between;font-size:11px;margin:2px 0}
+  #rep .r b{font-weight:600}
+  #rep .r span{color:var(--dim)}
+  #compass{position:absolute;left:50%;top:8px;transform:translateX(-50%);
+    background:rgba(12,14,11,.8);border:1px solid var(--line);padding:3px 14px;font-size:10px;
+    letter-spacing:.16em;color:var(--dim)}
+  #compass b{color:var(--amber)}
+  #minimap{position:absolute;right:10px;top:10px;width:172px;height:172px;
+    background:rgba(12,14,11,.85);border:1px solid var(--line)}
+  #minimap canvas{width:100%;height:100%;display:block}
+  #weather{position:absolute;right:10px;top:190px;width:172px;font-size:11px}
+  #weather .t{color:var(--amber);letter-spacing:.1em}
+  #weather .d{color:var(--dim);font-size:10px;margin-top:3px}
+  #hints{position:absolute;right:10px;top:276px;width:172px;font-size:11px;display:none}
+  #waterhint,#foodhint{display:none}
+  #waterhint .t,#foodhint .t{color:var(--cyan);letter-spacing:.1em}
+  #waterhint .d,#foodhint .d{color:var(--dim);font-size:10px;margin-top:3px}
+  #foodhint{margin-top:8px;padding-top:8px;border-top:1px dotted #2a3026}
+  #foodhint .t{color:var(--amber)}
+  #hotbar{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:5px}
+  .slot{width:46px;height:46px;background:rgba(12,14,11,.85);border:1px solid var(--line);
+    position:relative;display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--ink)}
+  .slot.sel{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber) inset}
+  .slot .k{position:absolute;left:2px;top:1px;font-size:9px;color:var(--faint)}
+  .slot .q{position:absolute;right:2px;bottom:1px;font-size:10px;color:var(--dim)}
+  #log{position:absolute;left:10px;bottom:66px;width:400px;font-size:11px;display:flex;
+    flex-direction:column-reverse;gap:2px}
+  #log div{background:rgba(12,14,11,.7);padding:2px 7px;border-left:2px solid var(--line2);
+    color:var(--ink);animation:fade .3s}
+  #log div.good{border-left-color:var(--green);color:#c3d69a}
+  #log div.bad{border-left-color:var(--rust);color:#e0a793}
+  #log div.clue{border-left-color:var(--amber);color:#f0d59a}
+  @keyframes fade{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+
+  /* ---- radio traffic ---- */
+  #comms{position:absolute;left:10px;top:238px;width:302px;font-size:10px;
+    background:rgba(12,14,11,.74);border:1px solid var(--line);padding:6px 8px}
+  #comms .hdr{color:var(--amber);letter-spacing:.14em;font-size:9px;
+    border-bottom:1px solid var(--line);padding-bottom:3px;margin-bottom:5px;
+    display:flex;justify-content:space-between;align-items:center}
+  #comms .hdr .band{color:var(--faint);letter-spacing:.1em}
+  #comms .m{margin:4px 0 0;line-height:1.45;color:var(--dim)}
+  #comms .m .at{color:var(--faint);margin-right:6px}
+  #comms .m b{color:var(--ink);font-weight:600;letter-spacing:.06em}
+  #comms .m.call{color:var(--cyan)}
+  #comms .m.call b{color:var(--cyan)}
+  #comms .m.raid{color:var(--rust)}
+  #comms .m.raid b{color:var(--rust)}
+  #comms .m.warn{color:var(--amber)}
+  #comms .m.warn b{color:var(--amber)}
+  #comms .m.system{color:var(--green)}
+  #comms .m.faction{color:#c08ce0}
+  #comms .empty{color:var(--faint);font-style:italic}
+
+  /* ---- pressure ---- */
+  #threat{position:absolute;right:10px;top:380px;width:172px;font-size:11px;
+    background:rgba(12,14,11,.82);border:1px solid var(--line);padding:7px 9px}
+  #threat .t{letter-spacing:.12em;font-size:10px;text-transform:uppercase}
+  #threat .d{color:var(--dim);font-size:10px;margin-top:3px;line-height:1.45}
+  #threat .meter{margin-top:6px;height:4px;background:#20251d;border:1px solid var(--line)}
+  #threat .meter i{display:block;height:100%;width:0;background:var(--amber);transition:width .3s}
+  #threat .prof{margin-top:5px;font-size:9px;color:var(--faint);letter-spacing:.1em;
+    text-transform:uppercase;border-top:1px dotted #2a3026;padding-top:4px}
+
+  /* ---- prompt / crosshair ---- */
+  #prompt{position:absolute;left:50%;top:58%;transform:translateX(-50%);background:rgba(12,14,11,.9);
+    border:1px solid var(--line2);padding:4px 12px;font-size:11px;color:var(--ink);display:none}
+  #prompt b{color:var(--amber)}
+  #coach{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);background:rgba(12,14,11,.92);
+    border:1px solid var(--line2);border-left:2px solid var(--amber);padding:5px 12px;font-size:11px;
+    color:var(--ink);display:none;max-width:660px;line-height:1.55}
+  #coach .k{color:var(--amber);font-size:9px;letter-spacing:.16em;margin-right:9px}
+  #coach .x{cursor:pointer;color:var(--faint);margin-left:12px}
+  #coach .x:hover{color:var(--rust)}
+  .kvtable{width:100%;border-collapse:collapse}
+  .kvtable td{padding:2px 0;font-size:11px;border-bottom:1px dotted #262b23;vertical-align:top;color:var(--dim)}
+  .kvtable td.k{color:var(--amber);width:158px;font-size:10px;letter-spacing:.06em;white-space:nowrap}
+  #danger{position:absolute;inset:0;pointer-events:none;opacity:0;
+    background:radial-gradient(ellipse at center,transparent 42%,rgba(150,40,20,.55) 100%)}
+
+  /* ---- modal panels ---- */
+  #inv{left:50%;top:50%;transform:translate(-50%,-50%);width:760px;height:480px}
+  #journal{left:50%;top:50%;transform:translate(-50%,-50%);width:820px;height:540px}
+  #map{left:50%;top:50%;transform:translate(-50%,-50%);width:720px;height:720px;max-height:88vh}
+  #codex{left:50%;top:50%;transform:translate(-50%,-50%);width:700px;height:500px}
+  #craft{left:50%;top:50%;transform:translate(-50%,-50%);width:740px;height:500px}
+  #contracts{left:50%;top:50%;transform:translate(-50%,-50%);width:760px;height:520px}
+  #endgame{left:50%;top:50%;transform:translate(-50%,-50%);width:680px;height:auto;max-height:86vh}
+  #help{left:50%;top:50%;transform:translate(-50%,-50%);width:700px;height:540px;max-height:88vh}
+  #options{left:50%;top:50%;transform:translate(-50%,-50%);width:480px;height:auto;max-height:86vh}
+  .optrow{display:flex;align-items:center;gap:10px;margin:10px 0 2px}
+  .optrow .lbl{width:96px;font-size:10px;letter-spacing:.1em;color:var(--amber);text-transform:uppercase}
+  .optrow .val{width:44px;text-align:right;font-size:11px;color:var(--ink)}
+  .optrow .hint{margin:0 0 10px 106px;font-size:10px;color:var(--faint)}
+  .optrow input[type=range]{flex:1;height:16px;-webkit-appearance:none;appearance:none;
+    background:transparent;cursor:pointer;margin:0}
+  .optrow input[type=range]::-webkit-slider-runnable-track{height:5px;background:#20251d;border:1px solid var(--line)}
+  .optrow input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:11px;height:15px;margin-top:-6px;background:var(--amber);border:1px solid #0c0e0b;cursor:pointer}
+  .optrow input[type=range]::-moz-range-track{height:5px;background:#20251d;border:1px solid var(--line)}
+  .optrow input[type=range]::-moz-range-thumb{width:11px;height:15px;background:var(--amber);
+    border:1px solid #0c0e0b;border-radius:0;cursor:pointer}
+  .optrow.off input[type=range]::-webkit-slider-thumb{background:var(--faint)}
+  .optrow.off input[type=range]::-moz-range-thumb{background:var(--faint)}
+  .optrow.off .val{color:var(--faint)}
+  .tabs{display:flex;gap:0;border-bottom:1px solid var(--line);background:#111410}
+  .tab{padding:7px 15px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
+    cursor:pointer;border-right:1px solid var(--line)}
+  .tab.on{color:var(--amber);background:var(--panel2)}
+  .tab:hover{color:var(--ink)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .cardx{background:var(--panel2);border:1px solid var(--line);padding:8px 10px}
+  .cardx h3{font-size:12px;color:var(--amber);letter-spacing:.08em;margin-bottom:4px;font-weight:600}
+  .cardx p{font-size:11px;color:var(--dim);line-height:1.55}
+  .cardx .meta{font-size:10px;color:var(--faint);margin-top:5px}
+  .listitem{padding:7px 9px;border:1px solid var(--line);background:var(--panel2);margin-bottom:6px;cursor:pointer}
+  .listitem:hover{border-color:var(--line2);background:#20251d}
+  .listitem.sel{border-color:var(--amber)}
+  .listitem .n{color:var(--ink);font-size:12px}
+  .listitem .d{color:var(--dim);font-size:10px;margin-top:2px}
+  .rar0{color:#8a8578}.rar1{color:#cfcabb}.rar2{color:#7fc4d8}.rar3{color:#c08ce0}.rar4{color:#e8b34a}
+  .btn{display:inline-block;padding:5px 12px;border:1px solid var(--line2);background:var(--panel2);
+    color:var(--ink);cursor:pointer;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+  .btn:hover{border-color:var(--amber);color:var(--amber)}
+  .btn.dis{opacity:.35;cursor:not-allowed}
+  .btn.prim{border-color:var(--amber);color:var(--amber)}
+  .close{position:absolute;right:9px;top:8px;width:22px;height:22px;border:1px solid var(--line);
+    text-align:center;line-height:19px;cursor:pointer;color:var(--dim);background:var(--panel2);z-index:5}
+  .close:hover{border-color:var(--rust);color:var(--rust)}
+  .kv{display:flex;justify-content:space-between;font-size:11px;padding:2px 0;border-bottom:1px dotted #262b23}
+  .kv span{color:var(--dim)}
+  .muted{color:var(--faint)}
+  .pre{white-space:pre-line}
+  .tag{display:inline-block;padding:1px 6px;border:1px solid var(--line2);font-size:9px;
+    letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-right:4px}
+  .tag.on{border-color:var(--amber);color:var(--amber)}
+  #fader{position:absolute;inset:0;background:#000;pointer-events:none;opacity:0;transition:opacity .5s}
+  #title{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;background:radial-gradient(ellipse at 50% 40%,#1a1f17,#070806 70%);z-index:20}
+  #title h1{font-size:46px;letter-spacing:.34em;color:var(--amber);text-indent:.34em;font-weight:400}
+  #title .sub{color:var(--dim);letter-spacing:.24em;margin-top:8px;font-size:12px;text-transform:uppercase}
+  #title .desc{max-width:560px;text-align:center;color:var(--faint);margin:26px 0 22px;font-size:12px;line-height:1.8}
+  #title .go{font-size:12px;letter-spacing:.2em;color:var(--ink);border:1px solid var(--line2);
+    padding:9px 26px;cursor:pointer;background:rgba(30,36,28,.6)}
+  #title .go:hover{border-color:var(--amber);color:var(--amber)}
+  #title .hint{color:#4a4740;font-size:10px;margin-top:16px;letter-spacing:.08em}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div id="stats" class="card">
+      <div class="row"><div class="lbl">Stamina</div><div class="bar fill-stam" id="bar-stam"><i id="b-stam"></i></div></div>
+      <div class="row"><div class="lbl">Food</div><div class="bar fill-food" id="bar-food"><i id="b-food"></i></div></div>
+      <div class="row"><div class="lbl">Water</div><div class="bar fill-water" id="bar-water"><i id="b-water"></i></div></div>
+      <div class="row"><div class="lbl">Dose</div><div class="bar fill-dose" id="bar-dose"><i id="b-dose"></i></div></div>
+      <div id="needs-warn"></div>
+    </div>
+    <div id="rep" class="card"></div>
+    <div id="comms" class="card">
+      <div class="hdr"><span>CH 3</span><span class="band" id="comms-band">RELAY OPEN</span></div>
+      <div id="comms-list"><div class="empty">Nothing on the band but carrier.</div></div>
+    </div>
+    <div id="compass"></div>
+    <div id="minimap" class="card"><canvas id="mm" width="172" height="172"></canvas></div>
+    <div id="weather" class="card"><div class="t"></div><div class="d"></div></div>
+    <div id="hints" class="card">
+      <div id="waterhint"><div class="t"></div><div class="d"></div></div>
+      <div id="foodhint"><div class="t"></div><div class="d"></div></div>
+    </div>
+    <div id="threat" class="card"><div class="t">Unwatched</div><div class="d"></div>
+      <div class="meter"><i id="threat-fill"></i></div><div class="prof"></div></div>
+    <div id="hotbar"></div>
+    <div id="log"></div>
+    <div id="coach"><span class="k">NEXT</span><span class="t"></span><span class="x">×</span></div>
+    <div id="prompt"></div>
+  </div>
+  <div id="danger"></div>
+  <div id="fader"></div>
+
+  <!-- INVENTORY -->
+  <div class="panel" id="inv"><div class="close">×</div>
+    <h2>Field Kit <small id="inv-car"></small></h2>
+    <div class="tabs"><div class="tab on" data-t="gear">Gear</div><div class="tab" data-t="mat">Materials</div>
+      <div class="tab" data-t="aid">Aids</div><div class="tab" data-t="intel">Intel</div></div>
+    <div class="pbody" id="inv-body"></div></div>
+
+  <!-- JOURNAL -->
+  <div class="panel" id="journal"><div class="close">×</div>
+    <h2>Survey Journal <small>Cases · Evidence · Deductions</small></h2>
+    <div class="tabs"><div class="tab on" data-t="cases">Cases</div><div class="tab" data-t="evid">Evidence</div>
+      <div class="tab" data-t="deduct">Deductions</div><div class="tab" data-t="read">Read</div></div>
+    <div class="pbody" id="jr-body"></div></div>
+
+  <!-- MAP -->
+  <div class="panel" id="map"><div class="close">×</div>
+    <h2>Verdigris Flats <small id="map-sub"></small></h2>
+    <div class="pbody" style="padding:0;display:flex;align-items:center;justify-content:center">
+      <canvas id="mapc" width="690" height="690"></canvas></div></div>
+
+  <!-- CODEX -->
+  <div class="panel" id="codex"><div class="close">×</div>
+    <h2>Field Codex <small>Contracts · Reputation</small></h2>
+    <div class="pbody" id="codex-body"></div></div>
+
+  <!-- CRAFT -->
+  <div class="panel" id="craft"><div class="close">×</div>
+    <h2>Workbench <small id="craft-station"></small></h2>
+    <div class="pbody" id="craft-body"></div></div>
+
+  <!-- CONTRACTS -->
+  <div class="panel" id="contracts"><div class="close">×</div>
+    <h2>Contracts</h2>
+    <div class="pbody" id="contracts-body"></div></div>
+
+  <!-- HELP -->
+  <div class="panel" id="help"><div class="close">×</div>
+    <h2>Field Manual</h2>
+    <div class="pbody" id="help-body"></div></div>
+
+  <!-- OPTIONS -->
+  <div class="panel" id="options"><div class="close">×</div>
+    <h2>Options <small>Sound · The Flats</small></h2>
+    <div class="pbody" id="options-body"></div></div>
+
+  <!-- ENDGAME -->
+  <div class="panel" id="endgame"><div class="close">×</div>
+    <h2>Survey Office — Final Report</h2>
+    <div class="pbody" id="endgame-body"></div></div>
+
+  <!-- TITLE -->
+  <div id="title">
+    <h1>VERDIGRIS</h1>
+    <div class="sub">A Survey of the Copper Country</div>
+    <p class="desc">Forty-one years ago the town of Verdigris Flats emptied in a single night and was never seen again. The Survey Office reopened the cold cases. Eleven thousand people went somewhere. The paperwork says they were evacuated. The paperwork is wrong.</p>
+    <div class="go" id="btn-start">BEGIN SURVEY</div>
+    <div class="hint">WASD move · SHIFT sprint · E interact · TAB inventory · J journal · M map · C codex · 1-5 hotbar</div>
+    <div class="hint">Press <b>H</b> at any time for the field manual · <b>O</b> for sound options · <b>N</b> to mute</div>
+  </div>
+</div>
+
+<script src="src/core.js"></script>
+<script src="src/items.js"></script>
+<script src="src/factions.js"></script>
+<script src="src/cases.js"></script>
+<script src="src/cases_b.js"></script>
+<script src="src/world.js"></script>
+<script src="src/interiors.js"></script>
+<script src="src/loot.js"></script>
+<script src="src/player.js"></script>
+<script src="src/gfx_terrain.js"></script>
+<script src="src/gfx_props.js"></script>
+<script src="src/gfx_actors.js"></script>
+<script src="src/gfx_atmos.js"></script>
+<script src="src/gfx_live.js"></script>
+<script src="src/gfx_interior.js"></script>
+<script src="src/dyn_content.js"></script>
+<script src="src/dynamic.js"></script>
+<script src="src/render.js"></script>
+<script src="src/ui.js"></script>
+<script src="src/save.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/help.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>

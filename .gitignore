@@ -1,0 +1,11 @@
+# The deploy stage is a copy of index.html + src/. It is rebuilt, not authored.
+dist/
+
+# node
+node_modules/
+
+# local noise
+*.log
+Thumbs.db
+.DS_Store
+desktop.ini
