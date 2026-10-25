@@ -4,6 +4,9 @@
 An original open-world exploration game: a vast high-desert world, loot with surprise finds,
 and a mystery that only closes if you actually reason your way through the evidence.
 
+**▶ Play it live: <https://61zhlfwnyj0yx.space.minimax.io>** — no install, no build step.
+Or clone this repo and double-click `play.bat`.
+
 Built with the **REA Reverse Engineering** plugin's evidence discipline: every conclusion is
 traceable to a source, observation is kept separate from inference, and unknowns stay unknown
 until the player earns them.
