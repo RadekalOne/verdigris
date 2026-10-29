@@ -596,12 +596,39 @@ ok(/slotinfo/.test(uiSrc), 'the hotbar has a name plate');
 ok(/Press SPACE to eat it/i.test(uiSrc), 'the food panel says the key to press');
 ok(/Go inside and press E on a crate/i.test(uiSrc), 'the food panel says what to do at the building');
 
-console.log('\n== the figure faces the way it walks indoors ==');
-/* Indoors there is no pointer to aim at, so the figure used to keep facing
-   whatever direction the mouse was pointing outside, while it walked the
-   other way. */
+console.log('\n== the room is walked the same way ==');
+/* Indoors the pointer picks the direction too. The room is a room and there
+   is nothing in it to shoot, so the heading is only about getting around -
+   but it is the same rule in both places, and a player who finds the
+   controls change the moment they step through a door is a player who
+   stops trusting the controls. */
+{
+  const emptyRoom = {
+    poi: poi,
+    tpl: { w: 480, h: 280, walls: [] },
+    solids: [],
+    containers: []
+  };
+  const p2 = {
+    x: 240, y: 140, r: 10, speed: 132, face: 0, aim: 0, moving: false,
+    hp: 100, maxhp: 100, stam: 100, food: 100, water: 100, dose: 0,
+    weapon: 'wpn_long_horn', sel: 0, hotbar: [], inv: {}, ammo: {}
+  };
+  const x0 = p2.x;
+  VG.updatePlayerInterior(p2, 0.05, { up: true, down: false, left: false, right: false }, emptyRoom);
+  ok(p2.x > x0 + 1, 'W walks toward the pointer in a room too');
+  ok(p2.moving === true, 'and the figure is walking');
+  p2.aim = 0;
+  const y0 = p2.y;
+  VG.updatePlayerInterior(p2, 0.05, { up: false, down: true, left: false, right: false }, emptyRoom);
+  ok(p2.x < x0 + 1 + 0.001, 'S walks back out of it');
+}
+console.log('\n== the figure faces the pointer indoors ==');
 const interiorSrc = fs.readFileSync(path.join(ROOT, 'src/interiors.js'), 'utf8');
-ok(/p\.aim = p\.face/.test(interiorSrc), 'indoors the figure turns the way the player walks');
+ok(!/p\.aim = p\.face/.test(interiorSrc), 'indoors the heading is not forced back to the way you walk');
+const playerWalkSrc = fs.readFileSync(path.join(ROOT, 'src/player.js'), 'utf8');
+ok(/VG\.heading = function/.test(playerWalkSrc), 'the pointer sets the heading');
+ok(/VG\.moveVector = function/.test(playerWalkSrc), 'and the walking is measured from it');
 
 console.log('\n== file:// rules ==');
 ['src/gfx_interior.js'].forEach((rel) => {

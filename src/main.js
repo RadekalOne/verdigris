@@ -426,6 +426,19 @@ window.VG = window.VG || {};
       /* inside a building the flats are suspended: no traffic, no rusted,
          no bullets. The room is the whole world for as long as you are in it. */
       const inside = !!(VG.INT && VG.INT.active);
+      /* The pointer has to be resolved BEFORE the player moves: the walking
+         is measured from the heading the pointer sets, and the figure turns
+         to that heading whether the player is moving or not. The camera is
+         resolved here too, because the pointer's place in the world is
+         measured through it. */
+      if (inside) {
+        VG.INT.updateCamera(p, dt, VG.viewW || window.innerWidth, VG.viewH || window.innerHeight);
+        mouse.world = VG.INT.screenToLocal(mouse.x, mouse.y);
+      } else {
+        VG.updateCamera(p, dt, world);
+        mouse.world = VG.screenToWorld(mouse.x, mouse.y);
+      }
+      p.aim = VG.heading(p, mouse.world);
       if (inside) {
         VG.INT.update(p, dt, input);
       } else {
@@ -481,16 +494,6 @@ window.VG = window.VG || {};
     VG.state.fireCd = Math.max(0, VG.state.fireCd - dt);
     /* holding the mouse button keeps the weapon working at its own rate */
     if (firing && !VG.paused && !(VG.INT && VG.INT.active)) VG.fire(p, world);
-    if (VG.INT && VG.INT.active) {
-      VG.INT.updateCamera(p, dt, VG.viewW || window.innerWidth, VG.viewH || window.innerHeight);
-      mouse.world = VG.INT.screenToLocal(mouse.x, mouse.y);
-    } else {
-      VG.updateCamera(p, dt, world);
-      mouse.world = VG.screenToWorld(mouse.x, mouse.y);
-      /* where the player is looking. The figure turns to this, so a round
-         leaves the body in the direction you are pointing. */
-      p.aim = Math.atan2(mouse.world.y - p.y, mouse.world.x - p.x);
-    }
     VG.draw(p, world, st, dt);
     VG.drawHud(p, world, st);
 

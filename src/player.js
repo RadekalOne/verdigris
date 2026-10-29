@@ -267,34 +267,69 @@ window.VG = window.VG || {};
     return dealt;
   };
 
+  /* ---------- walking ---------- */
+  /* Where the player is looking, in radians. The pointer chooses it, and the
+     figure turns to it whether the player is moving or not. A pointer
+     sitting on top of the player has no direction in it, so the last
+     heading is kept rather than letting the figure twitch between two
+     angles. */
+  VG.heading = function (p, mw) {
+    if (!p) return 0;
+    const last = (typeof p.aim === 'number') ? p.aim
+      : ((typeof p.face === 'number') ? p.face : 0);
+    const m = mw || (VG.mouse ? VG.mouse.world : null);
+    if (!m) return last;
+    const dx = m.x - p.x, dy = m.y - p.y;
+    if (dx * dx + dy * dy < 64) return last;
+    return Math.atan2(dy, dx);
+  };
+
+  /* Which way the player wants to go, in world space.
+     The mouse chooses the heading; the keyboard chooses how to use it.
+     W walks toward the pointer, S walks away from it, and A and D step
+     sideways across it. The keys are measured against the heading and not
+     against the screen, so the character has exactly one frame of reference
+     - the way it is facing - and the two can never disagree. */
+  VG.moveVector = function (p, input) {
+    const a = (typeof p.aim === 'number') ? p.aim
+      : ((typeof p.face === 'number') ? p.face : 0);
+    const fx = Math.cos(a), fy = Math.sin(a);
+    const rx = -fy, ry = fx;          /* the heading's own right-hand side */
+    let vx = 0, vy = 0;
+    if (input.up) { vx += fx; vy += fy; }
+    if (input.down) { vx -= fx; vy -= fy; }
+    if (input.right) { vx += rx; vy += ry; }
+    if (input.left) { vx -= rx; vy -= ry; }
+    const mag = Math.hypot(vx, vy);
+    if (mag < 1e-6) return { x: 0, y: 0, moving: false };
+    return { x: vx / mag, y: vy / mag, moving: true };
+  };
+
   /* ---------- main update ---------- */
   VG.updatePlayer = function (p, dt, input, world) {
     const sp = VG.sprint && p.stam > 2 ? p.speed * 1.62 : p.speed;
-    let vx = 0, vy = 0;
-    if (input.up) vy -= 1;
-    if (input.down) vy += 1;
-    if (input.left) vx -= 1;
-    if (input.right) vx += 1;
-    const mag = Math.hypot(vx, vy);
-    if (mag > 0) {
-      vx /= mag; vy /= mag;
+    const mv = VG.moveVector(p, input);
+    if (mv.moving) {
       const b = world.biomeAt(Math.floor(p.x / VG.TILE), Math.floor(p.y / VG.TILE));
       const walk = VG.BIOME[b].walk;
-      p.x += vx * sp * dt / walk;
-      p.y += vy * sp * dt / walk;
-      p.face = Math.atan2(vy, vx);
+      p.x += mv.x * sp * dt / walk;
+      p.y += mv.y * sp * dt / walk;
+      /* the way you are travelling, which is not the way you are facing:
+         walking backwards is the one case where the two disagree, and the
+         renderer needs to know which is which */
+      p.face = Math.atan2(mv.y, mv.x);
       p.moving = true;
     } else p.moving = false;
 
     /* stamina */
-    if (VG.sprint && mag > 0 && p.stam > 0) p.stam -= 15 * dt;
-    else p.stam = Math.min(100, p.stam + (mag > 0 ? 5.5 : 12) * dt);
+    if (VG.sprint && mv.moving && p.stam > 0) p.stam -= 15 * dt;
+    else p.stam = Math.min(100, p.stam + (mv.moving ? 5.5 : 12) * dt);
 
     /* needs. These are a clock, not a sprint: the flats are meant to be
        explored, and a survey that ends in thirty seconds of dehydration is
        not a survey. Water is the fastest of the three. */
-    p.food = Math.max(0, p.food - (0.14 + (mag > 0 ? 0.09 : 0)) * dt);
-    p.water = Math.max(0, p.water - (0.22 + (mag > 0 ? 0.12 : 0)) * dt);
+    p.food = Math.max(0, p.food - (0.14 + (mv.moving ? 0.09 : 0)) * dt);
+    p.water = Math.max(0, p.water - (0.22 + (mv.moving ? 0.12 : 0)) * dt);
     if (p.food <= 0) p.hp -= 0.9 * dt;
     if (p.water <= 0) p.hp -= 1.4 * dt;
 
@@ -332,21 +367,15 @@ window.VG = window.VG || {};
     const solids = room.solids || [];
     const tpl = room.tpl;
     const sp = (VG.sprint && p.stam > 2 ? p.speed * 1.55 : p.speed) * 0.94;
-    let vx = 0, vy = 0;
-    if (input.up) vy -= 1;
-    if (input.down) vy += 1;
-    if (input.left) vx -= 1;
-    if (input.right) vx += 1;
-    const mag = Math.hypot(vx, vy);
-    if (mag > 0) {
-      vx /= mag; vy /= mag;
+    const mv = VG.moveVector(p, input);
+    if (mv.moving) {
       /* The move is taken in short sub-steps. A single large step can
          jump straight over a counter and land on the far side of it, which
          is how a player walks through a wall on a slow frame. Nothing here
          is thinner than a hand, so a five-pixel step cannot miss one. */
       const total = sp * dt;
       const steps = Math.max(1, Math.ceil(total / 5));
-      const mx = (vx * total) / steps, my = (vy * total) / steps;
+      const mx = (mv.x * total) / steps, my = (mv.y * total) / steps;
       for (let i = 0; i < steps; i++) {
         /* one axis at a time, so a wall slides you along it instead of
            sticking you to it */
@@ -355,17 +384,17 @@ window.VG = window.VG || {};
         const ny = p.y + my;
         if (!VG.blockedInRoom(p.x, ny, p.r, solids, tpl)) p.y = ny;
       }
-      p.face = Math.atan2(vy, vx);
+      p.face = Math.atan2(mv.y, mv.x);
       p.moving = true;
     } else p.moving = false;
 
     /* stamina */
-    if (VG.sprint && mag > 0 && p.stam > 0) p.stam -= 15 * dt;
-    else p.stam = Math.min(100, p.stam + (mag > 0 ? 5.5 : 12) * dt);
+    if (VG.sprint && mv.moving && p.stam > 0) p.stam -= 15 * dt;
+    else p.stam = Math.min(100, p.stam + (mv.moving ? 5.5 : 12) * dt);
 
     /* needs */
-    p.food = Math.max(0, p.food - (0.14 + (mag > 0 ? 0.09 : 0)) * dt);
-    p.water = Math.max(0, p.water - (0.22 + (mag > 0 ? 0.12 : 0)) * dt);
+    p.food = Math.max(0, p.food - (0.14 + (mv.moving ? 0.09 : 0)) * dt);
+    p.water = Math.max(0, p.water - (0.22 + (mv.moving ? 0.12 : 0)) * dt);
     if (p.food <= 0) p.hp -= 0.9 * dt;
     if (p.water <= 0) p.hp -= 1.4 * dt;
     p.dose = Math.max(0, p.dose - 0.16 * dt);

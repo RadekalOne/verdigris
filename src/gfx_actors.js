@@ -667,8 +667,14 @@ window.VG.GFX = window.VG.GFX || {};
     ctx.save();
     ctx.translate(sx, py);
 
-    /* dust coat: rounded trapezoid, hem swung opposite the facing */
-    const hx = -fx * 1.6, hy = -fy * 0.7;
+    /* dust coat: rounded trapezoid, hem swung opposite the facing.
+       The hem swings with the way you are actually travelling, so backing
+       up reads as backing up and not as walking forward with a coat that
+       has come loose on one side. */
+    const travel = (typeof p.face === 'number') ? p.face : face;
+    const back = p.moving && Math.cos(travel - face) < -0.2;
+    const hem = back ? -1 : 1;
+    const hx = -fx * 1.6 * hem, hy = -fy * 0.7 * hem;
     const coatBase = lit ? LIT_COAT : '#7e7358';
     const hoodBase = lit ? LIT_HOOD : '#5f5645';
     const hox = fx * 1.5, hoy = -8.2 + fy * 1.1;

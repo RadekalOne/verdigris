@@ -246,9 +246,11 @@ The site itself is verified to run from `file://` as well, with a clean console.
 
 | Key | Action |
 |---|---|
-| `W A S D` / arrows | move |
+| mouse | **aim — your figure always faces the pointer** · the reticle sits under the cursor · **hold** left click to fire · the round goes exactly where the reticle is |
+| `W` / `↑` | walk **toward** the pointer — where you are going is the place you are looking |
+| `S` / `↓` | walk back, away from the pointer |
+| `A` `D` / `←` `→` | sidestep across the way you are facing — how you circle something without turning away from it |
 | `Shift` | sprint (drains stamina) |
-| mouse | aim — the reticle sits under the cursor · **hold** left click to fire · the round goes exactly where the reticle is |
 | `E` | search a container · survey a location · answer a distress call · go through a door |
 | `ESC` | close a panel · step back outside if you are inside a building |
 | `R` | draw water at a well or a water tower |

@@ -449,6 +449,39 @@ The rules, which `test/weapons.js` enforces:
    start with a shot instead of waiting for something to walk into you. A silenced weapon carries
    nothing beyond the distance at which they would have seen you anyway (120m).
 
+### 5.8 The figure is always turned to the pointer
+
+Rad asked for the walking to change: *rather than use keyboard to change directions, W and arrow up
+walk forward, S and arrow down move backwards, and the mouse aim chooses the direction — the
+character walks wherever the aim points.* A and D became a sidestep across the way you are facing,
+and the same rule applies inside a building.
+
+The rendering rules that follow from it:
+
+- **The figure faces the pointer, always, and it does not matter whether the player is moving.**
+  The heading is the direction from the player to the pointer, resolved every frame from the
+  pointer's place in the world. A body that faces one way while the round goes another is how a
+  player concludes that aiming does not work; a body that faces one way while the *walking* goes
+  another is how a player concludes the same about walking.
+- **The heading holds still when the pointer is on the player.** A pointer sitting on top of the
+  figure has no direction in it, and a heading that flickers between two angles makes the figure
+  twitch and the walk jitter. The last heading is kept instead.
+- **The coat hem swings with the way you are travelling, not the way you are facing.** Backing up
+  has to read as backing up and not as walking forward with a coat that has come loose on one side.
+- **The compass reads the facing, not the travel.** The moment you walk backwards the two are
+  different things, and a compass that contradicts the figure is worse than no compass at all.
+
+**THE KEYS ARE MEASURED AGAINST THE CHARACTER, NOT AGAINST THE SCREEN.** W is toward the pointer
+and S is away from it; A and D are across the way you are facing. This is deliberate: the character
+has exactly one frame of reference — the way it is turned — so a key always means the same thing
+relative to the figure, whatever angle the pointer happens to be at. Mixing the two frames (W
+measured against the pointer, A and D measured against the screen) would mean that the same key
+does two different things, and the player would never be able to learn it.
+
+The same rule indoors: the pointer's place in the room is worked out by `screenToLocal`, so the
+cursor over the room picks the direction. A player who finds the controls change the moment they
+step through a door is a player who stops trusting the controls.
+
 ---
 
 ## 6. Lighting

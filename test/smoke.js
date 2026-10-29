@@ -594,6 +594,55 @@ const helpSrc = fs.readFileSync(path.join(ROOT, 'src/help.js'), 'utf8');
 ok(/Aiming/.test(helpSrc) && /no spread/i.test(helpSrc), 'the manual explains aiming');
 ok(/Reach/.test(helpSrc) && /Swinging/.test(helpSrc), 'the manual explains reach and swinging');
 
+console.log('\n== how walking works ==');
+/* The mouse chooses the heading and the keyboard chooses how to use it: W
+   walks toward the pointer, S walks back, A and D step sideways across the
+   way you are facing. The keys are measured against the character and not
+   against the screen, so there is only one direction to learn - and the
+   character is always turned to the pointer, so the player can see where
+   they are going without a compass. */
+const wW = VG.genWorld(6161);
+const pW = VG.newPlayer(wW);
+pW.x = 400; pW.y = 400;
+VG.sprint = false;
+const KEYS = {
+  none: { up: false, down: false, left: false, right: false },
+  up: { up: true, down: false, left: false, right: false },
+  down: { up: false, down: true, left: false, right: false },
+  left: { up: false, down: false, left: true, right: false },
+  right: { up: false, down: false, left: false, right: true }
+};
+const walkStep = (input, aim) => {
+  pW.aim = aim;
+  const x0 = pW.x, y0 = pW.y;
+  VG.updatePlayer(pW, 0.05, input, wW);
+  return { dx: pW.x - x0, dy: pW.y - y0 };
+};
+let d = walkStep(KEYS.up, 0);
+ok(d.dx > 0.5 && Math.abs(d.dy) < 0.001, 'W walks toward the pointer (east)');
+d = walkStep(KEYS.down, 0);
+ok(d.dx < -0.5 && Math.abs(d.dy) < 0.001, 'S walks back, away from the pointer');
+d = walkStep(KEYS.right, 0);
+ok(d.dy > 0.5 && Math.abs(d.dx) < 0.001, 'D steps to the right of the way you are facing');
+d = walkStep(KEYS.left, 0);
+ok(d.dy < -0.5 && Math.abs(d.dx) < 0.001, 'A steps to the left of it');
+d = walkStep({ up: true, down: false, left: false, right: true }, 0);
+ok(d.dx > 0.1 && d.dy > 0.1, 'W and D together walk diagonally');
+d = walkStep(KEYS.none, 0);
+ok(Math.abs(d.dx) < 0.001 && Math.abs(d.dy) < 0.001, 'no key, no movement');
+
+/* the heading is the pointer, and it holds still when the pointer is on
+   the player - a heading that flickers between two angles makes the figure
+   twitch and the walking jitter */
+pW.x = 400; pW.y = 400;
+ok(Math.abs(VG.heading(pW, { x: 400, y: 500 }) - Math.PI / 2) < 0.001,
+  'the heading is the direction to the pointer');
+pW.aim = 1.234;
+ok(VG.heading(pW, { x: 400, y: 400 }) === 1.234,
+  'a pointer sitting on the player keeps the last heading');
+ok(/Walking/.test(helpSrc) && /pointer/i.test(helpSrc),
+  'the manual explains the walking in words');
+
 /* The reticle has to be drawn WHERE THE ROUND GOES. This drives the real
    renderer against a recording canvas and looks at the coordinates it
    actually draws at - a source grep cannot tell you that the mark moved

@@ -26,9 +26,11 @@ window.VG = window.VG || {};
     {
       group: 'Moving and looking',
       rows: [
-        ['W A S D  /  arrows', 'Move'],
+        ['mouse', 'Aim. Your figure always faces the pointer'],
+        ['W  /  Up', 'Walk toward the pointer'],
+        ['S  /  Down', 'Walk back, away from the pointer'],
+        ['A D  /  Left Right', 'Sidestep across the way you are facing'],
         ['SHIFT', 'Sprint. Costs stamina; walking is free'],
-        ['mouse', 'Aim'],
         ['left click', 'Fire the weapon in your hand, or swing it'],
         ['1 - 5', 'Choose a hotbar slot'],
         ['SPACE', 'Equip or use the selected item'],
@@ -95,7 +97,7 @@ window.VG = window.VG || {};
      the radio step is pointless in a quiet world, and a coach that nags about
      a mechanic the player will never meet is worse than no coach. */
   const STEPS = [
-    { id: 'moved', keys: ['W', 'A', 'S', 'D'], text: 'Walk around the flats. Hold SHIFT to sprint.' },
+    { id: 'moved', keys: ['W', 'S', 'A', 'D'], text: 'The pointer shows where you go: W walks toward it, S walks back, A and D sidestep. Hold SHIFT to sprint.' },
     {
       id: 'equipped', keys: ['1-5', 'SPACE', 'TAB'],
       text: 'Press 1-5 to pick a hotbar slot, then SPACE to use what is in it: a weapon goes in your hand, a tin gets eaten, a canteen gets drunk. Anything else you find lands in your Field Kit (TAB) - click a weapon there to put it in your hand.',
@@ -272,6 +274,18 @@ window.VG = window.VG || {};
         }
         h += '</table>';
       }
+
+      /* the walking, in words. It is the one system that changed shape, and
+         a player who has not seen it before needs it spelled out rather than
+         inferred from a key list. */
+      h += '<h3 style="color:var(--amber);font-size:12px;letter-spacing:.08em;margin:14px 0 6px">Walking</h3>';
+      h += '<p class="muted" style="font-size:11px;line-height:1.6;margin:0 0 8px">' +
+        'The mouse is your heading. Your figure always faces the pointer, and W walks you toward it, so ' +
+        'where you are going is the place you are looking. S walks you backward, away from the pointer, and ' +
+        'A and D step you sideways across the way you are facing - that is how you circle something without ' +
+        'turning away from it. The same is true inside a building: the cursor over the room is where you are ' +
+        'headed. The keys are measured against your facing and not against the screen, so there is only ever ' +
+        'one direction to learn.</p>';
 
       /* the checklist */
       h += '<h3 style="color:var(--amber);font-size:12px;letter-spacing:.08em;margin:16px 0 6px">Getting started</h3>';

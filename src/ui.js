@@ -106,9 +106,15 @@ window.VG = window.VG || {};
          and a compass that lies is worse than no compass at all, because
          you stop trusting the one direction it is trying to tell you. */
       const dirs = VG.COMPASS || ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'];
+      /* The compass has to agree with the figure. The figure faces the
+         pointer, so the compass reads the pointer's bearing - not the
+         direction of travel, which is a different thing the moment you
+         walk backwards, and a compass that contradicts the figure is worse
+         than no compass at all. */
+      const look = (typeof p.aim === 'number') ? p.aim : (p.face || 0);
       const facing = VG.compassDir
-        ? VG.compassDir(Math.cos(p.face), Math.sin(p.face))
-        : dirs[Math.round((((p.face * 180 / Math.PI) % 360 + 360) % 360) / 45) % 8];
+        ? VG.compassDir(Math.cos(look), Math.sin(look))
+        : dirs[Math.round((((look * 180 / Math.PI) % 360 + 360) % 360) / 45) % 8];
       /* inside a building the tile coordinates mean nothing on the map, so
          the readout names the room instead */
       if (VG.INT && VG.INT.active) {

@@ -614,10 +614,14 @@ window.VG = window.VG || {};
     p.y = spawn.y;
     p.face = -Math.PI / 2;
     p.moving = false;
-    /* indoors the figure faces where you walk. There is nothing to aim at
-       in a room, and a body still pointing at the last outdoor cursor looks
-       like a bug. */
-    p.aim = undefined;
+    /* The heading is the pointer's, in here as well as out there. The room
+       is a room and there is nothing in it to shoot, so the heading is only
+       about getting around - but it is the same rule in both places, and a
+       player who walks in and finds the controls have changed is a player
+       who stops trusting the controls. The pointer's place in the room is
+       worked out by screenToLocal, so the cursor over the room picks the
+       direction you walk. */
+    p.aim = -Math.PI / 2;
     poi.discovered = true;
     if (VG.log) {
       VG.log(tpl.flavour, 'clue');
@@ -649,12 +653,10 @@ window.VG = window.VG || {};
   INT.update = function (p, dt, input) {
     if (!INT.active) return;
     if (VG.updatePlayerInterior) VG.updatePlayerInterior(p, dt, input, INT.active);
-    /* There is no aiming in a room: no crosshair, no cursor, nothing to aim
-       at. Outdoors the figure turns to the pointer, and outside the room
-       that pointer is frozen at whatever it was on the flats, so a player
-       who walked in facing one way kept facing that way while they walked
-       the other. Inside, the figure turns the way they walk. */
-    p.aim = p.face;
+    /* The heading is not set here. The pointer sets it, in the room as well
+       as on the flats, and the main loop resolves it before the player
+       moves so the walking is measured from the direction the figure is
+       turned to. */
     /* walking out through the gap in the south wall leaves the building */
     if (INT.active && INT.atDoorway(p)) INT.exit(p);
   };
