@@ -35,13 +35,26 @@ window.VG = window.VG || {};
     p.inv['scrap_ceramic'] = 2;
     p.inv['aid_canteen'] = 1;
     p.inv['aid_field_dressing'] = 1;
-    p.hotbar[0] = 'wpn_scrap_torch';
-    p.weapon = 'wpn_scrap_torch';
+    /* The gun comes first. The player used to start with nothing but a
+       torch - a swung weapon with a 40m reach - so the first fight in the
+       flats was a fight they could only finish with their hands, and no
+       gun they found had the reach to be used at all. The revolver is in
+       your hand at the start, with six rounds, and it reaches further than
+       anything on the flats can notice you. */
+    p.hotbar[0] = 'wpn_long_horn';
+    p.weapon = 'wpn_long_horn';
+    /* the torch is slot 2: it is the light, and it keeps burning in the
+       pack, so putting the gun in your hand does not put you in the dark */
+    p.hotbar[1] = 'wpn_scrap_torch';
     /* the canteen and the dressing start in the bar, so the first time you
        find something you can use, the way to use it is already on screen */
-    p.hotbar[1] = 'aid_canteen';
-    p.hotbar[2] = 'aid_field_dressing';
+    p.hotbar[2] = 'aid_canteen';
+    p.hotbar[3] = 'aid_field_dressing';
+    /* slot 5 is left empty on purpose: the first thing you find has a home */
     p.inv['wpn_scrap_torch'] = 1;
+    p.inv['wpn_long_horn'] = 1;
+    p.inv['ammo_slug'] = 6;
+    p.ammo['ammo_slug'] = 6;
     p.inv['ammo_coin'] = 6;
     /* the coins go into the ammo counter as well as the pack, or the sling
        reports itself empty while six of them sit in the inventory */
@@ -59,12 +72,21 @@ window.VG = window.VG || {};
     /* A consumable aid goes into a free hotbar slot the first time you find
        one. You draw water with R, but a tin of rations that sits in the pack
        with no route to your hands is a tin you cannot eat and a hunger you
-       cannot fix. The slot is the route. */
-    if (it && it.cat === 'aid' && !it.passive && p.hotbar && p.hotbar.indexOf(id) < 0) {
+       cannot fix. The slot is the route.
+       A weapon goes into a free slot for the same reason, and harder: a gun
+       you found and cannot reach is a gun you never shoot, and a player who
+       has found a rifle and still fights with a torch has learned the wrong
+       lesson about the whole game. */
+    if (it && (it.cat === 'aid' || it.cat === 'weapon') && !it.passive && p.hotbar && p.hotbar.indexOf(id) < 0) {
       const free = p.hotbar.indexOf(null);
       if (free >= 0) {
         p.hotbar[free] = id;
-        if (!VG.taughtAid) {
+        if (it.cat === 'weapon') {
+          if (!VG.taughtWeapon) {
+            VG.taughtWeapon = true;
+            VG.log('Press ' + (free + 1) + ' to take the ' + it.name + ', then SPACE to put it in your hand.', 'good');
+          }
+        } else if (!VG.taughtAid) {
           VG.taughtAid = true;
           VG.log('Press ' + (free + 1) + ' to take it, then SPACE to use it.', 'good');
         }
@@ -102,12 +124,27 @@ window.VG = window.VG || {};
 
   VG.equipWeapon = function (p, id) {
     if (!VG.item(id) || VG.item(id).cat !== 'weapon') return false;
-    p.weapon = id; p.hotbar[p.sel] = id;
+    p.weapon = id;
+    /* Put it where the player can reach it: the slot it already sits in,
+       else a free slot, else the selected one. Equipping must never throw
+       a hotbar slot away - a torch that vanishes from the bar the moment
+       you draw a gun is a torch you have to walk back to the Field Kit to
+       find, and the slot the player selected is the slot that shows what
+       is in their hands. */
+    let slot = p.hotbar.indexOf(id);
+    if (slot < 0) {
+      const free = p.hotbar.indexOf(null);
+      slot = (free >= 0) ? free : p.sel;
+      p.hotbar[slot] = id;
+    }
+    p.sel = slot;
+    if (VG.Help) VG.Help.mark('equipped');
     return true;
   };
   VG.equipArmor = function (p, id) {
     if (!VG.item(id) || VG.item(id).cat !== 'armor') return false;
     p.armor = id;
+    if (VG.Help) VG.Help.mark('equipped');
     return true;
   };
 
@@ -144,6 +181,7 @@ window.VG = window.VG || {};
       if (it.stats.rad) p.dose = VG.clamp(p.dose + it.stats.rad, 0, 100);
       VG.invRemove(p, id, 1);
       say('Used ' + it.name + '.', 'good');
+      if (VG.Help) VG.Help.mark('ate');
       if (VG.renderInv) VG.renderInv();
       return true;
     }
@@ -161,6 +199,61 @@ window.VG = window.VG || {};
     }
     say(it.name + ' — nothing to do with it.', 'muted');
     return false;
+  };
+
+  /* What does the player press to use this?
+     The hotbar and the Field Kit both have to say it out loud, because until
+     the game says it the player is guessing, and a tin of rations you do not
+     know how to eat is a tin of rations. One sentence per item, used
+     everywhere the item is shown. */
+  VG.useHint = function (it, p) {
+    if (!it) return '';
+    p = p || VG.Player;
+    if (it.cat === 'weapon') {
+      /* A weapon has two things the player needs to know and neither of them
+         is its name: whether it fires or swings, and how far it reaches.
+         "Reaches 280m" is the difference between a gun that works and a gun
+         that dies in the air, and the player can only find that out by
+         firing at something that is still a long way off. */
+      const reach = (it.stats && it.stats.range) ? it.stats.range : 0;
+      const inHand = !!(p && p.weapon === it.id);
+      if (VG.isRangedWeapon(it)) {
+        return inHand
+          ? ('click to fire - reaches ' + reach + 'm')
+          : ('SPACE to equip - fires to ' + reach + 'm');
+      }
+      return inHand
+        ? ('click to swing - ' + reach + 'm reach')
+        : ('SPACE to equip - swung at ' + reach + 'm');
+    }
+    if (it.cat === 'armor') return 'click to wear it';
+    if (it.cat === 'aid') {
+      if (it.passive) return 'worn - it works while you carry it';
+      const s = it.stats || {};
+      if (s.food > 0) return 'SPACE to eat';
+      if (s.thirst > 0) return 'SPACE to drink';
+      if (s.heal > 0) return 'SPACE to heal';
+      if (s.rad < 0) return 'SPACE to take';
+      return 'SPACE to use';
+    }
+    if (it.cat === 'ammo') return 'goes into your ammo count';
+    return '';
+  };
+
+  /* The first thing in your bar that is food. A hungry player needs to be
+     told what to press, not only where to walk. */
+  VG.carriedFood = function (p) {
+    p = p || VG.Player;
+    if (!p || !p.hotbar) return null;
+    for (let i = 0; i < p.hotbar.length; i++) {
+      const id = p.hotbar[i];
+      if (!id) continue;
+      const it = VG.item(id);
+      if (it && it.cat === 'aid' && !it.passive && it.stats && it.stats.food > 0) {
+        return { id: id, item: it, slot: i };
+      }
+    }
+    return null;
   };
 
   /* ---------- damage & hazards ---------- */
@@ -294,6 +387,29 @@ window.VG = window.VG || {};
     return false;
   };
 
+  /* ---------- the torch ---------- */
+  /* Where the torch is burning, in world coordinates. The torch is a light
+     source first and a weapon second: it keeps burning in the pack, so
+     putting a gun in your hand does not put you in the dark - and the light
+     you are standing in always has a visible source. Returns null when the
+     torch is not with you at all. */
+  VG.torchLight = function (p) {
+    if (!p) return null;
+    const held = p.weapon === 'wpn_scrap_torch';
+    const carried = held || (p.inv && p.inv['wpn_scrap_torch'] > 0);
+    if (!carried) return null;
+    const face = (typeof p.aim === 'number') ? p.aim
+      : ((typeof p.face === 'number') ? p.face : 0);
+    const fx = Math.cos(face), fy = Math.sin(face);
+    const nx = -fy, ny = fx;
+    /* in your hand the flame is out in front of you; in the pack it burns at
+       your off hand. The light and the flame have to be in the same place -
+       a pool of light with nothing in it is a lie the player has to trust. */
+    const out = held ? 14.0 : -3.0;
+    const side = held ? 4.6 : -4.6;
+    return { x: p.x + fx * out + nx * side, y: p.y + fy * out + ny * side, held: held };
+  };
+
   /* ---------- combat ---------- */
   VG.playerWeapon = function (p) { return p.weapon ? VG.item(p.weapon) : null; };
 
@@ -344,6 +460,26 @@ window.VG = window.VG || {};
     const w = VG.playerWeapon(p);
     if (w && (w.mods || []).indexOf('silenced') >= 0) return 120;
     return 240;
+  };
+  /* A shot is a noise. The Rusted hear it, and a noise tells them where
+     you are. Without this, firing at something that has not noticed you yet
+     does nothing at all: the round may hit, but the flats stay quiet and the
+     fight never starts - which is exactly what "the gun only works when it
+     is on top of you" looks like from the player's side.
+     A shot carries as far as the round flies, so the number on the weapon
+     means two things: how far you can hit, and how far you can be heard.
+     A silenced weapon carries nothing beyond the distance at which they
+     would have seen you anyway. */
+  VG.shotAlert = function (p, world, reach) {
+    if (!world || !world.enemies) return;
+    const w = VG.playerWeapon(p);
+    const silenced = w && (w.mods || []).indexOf('silenced') >= 0;
+    const r = silenced ? Math.min(reach, VG.aggroRange(p)) : reach;
+    for (const e of world.enemies) {
+      if (e.dead) continue;
+      const ex = e.x * VG.TILE, ey = e.y * VG.TILE;
+      if (VG.dist(p.x, p.y, ex, ey) <= r) e.aggro = 2.2;
+    }
   };
   /* how much further you can see into the dark */
   VG.playerScope = function (p) {

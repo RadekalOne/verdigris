@@ -339,6 +339,116 @@ worse than no reticle, because the player trusts it.
 - The **damage number** is outlined with `strokeText`, not merely shadowed, and sits clear
   above the impact point.
 
+### 5.3 The player indoors — lit, edged, and drawn last
+
+Outdoors the player wears a dull olive coat (`#7e7358`) and reads against sand and scrub. Indoors
+they stand in the middle of their own torchlight on a floor of the same family of colour, and a
+coat the same value as the floor is not a person, it is a smudge. Three rules fix it, and all
+three are the same rule stated three ways: **the player is the one thing in the frame that has to
+be readable at a glance.**
+
+- **The indoor figure is lit.** Coat `#c4b795` (the outdoor coat as it would actually look with a
+  lamp in your hand), hood `#6a604c` — a dark head against a lit body, which is what gives the
+  silhouette its structure. Arm `#8d8467`, sash `rgba(226,142,46,.96)`.
+- **The figure carries its own dark edge** — `rgba(7,8,6,.66)` stroked around the coat (lineWidth
+  3.4) and the hood (2.6), drawn *under* the body. Same rule as the hit marker and the damage
+  number: a mark drawn over a lit thing needs its own darkness under it, or it dissolves into it.
+- **The figure is drawn last.** After the veil, after the torch glow, after the vignette. The
+  veil and the glow used to land on the player as well as on the room, and a coat washed with the
+  same amber as the floor is a smudge. Drawn last, no light in the room can dim the player.
+
+The rim light on the lit coat is `rgba(255,241,214,.44)` at lineWidth 2.4, against the outdoor
+`rgba(255,240,210,.16)` at 1.8. A lit figure needs a stronger rim than one in flat daylight.
+
+Measured on the Fuel Stop Office at 17:41: coat luminance 178, floor luminance 108 — a ratio of
+1.65, with the dark edge on both sides of the silhouette.
+
+### 5.4 The light in a room is a veil, not a hole
+
+The interior lighting pass paints the darkness on **its own canvas** and punches the lit holes in
+*that*, then lays the result over the room with `source-over`. Punching the holes straight into
+the scene removed the alpha from the floor, the walls, the furniture and the player underneath
+them: the lit areas came out as holes to the page behind the canvas, the room read as a brown
+fog, and the player floated in it. A hole in the veil now means what it looks like — less dark.
+
+The additive glow that carries the colour of a light is kept lean (`0.20 * intensity + 0.04`, with
+a tight falloff). A fat additive wash turns a lit room into a fog, and a fog has no edges and no
+shapes in it.
+
+The player also gets a **presence light**: a hole in the veil and nothing else, centred on them.
+Outdoors the light pass opens a bright circle around the player; indoors the only hole in the dark
+used to be the torch's, so anyone who put the torch away stood in the murk with their own coat for
+company. The presence light opens a hole and adds no colour, so it never washes the figure.
+
+### 5.5 A mark over a lit thing needs a dark edge
+
+The crate that holds rations is marked with an amber pointer — but only to a hungry player.
+Pointing at the building is half of the route to food; the other half is finding the right crate
+in a room where every crate looks the same, and a route that dead-ends is not a route. The marker
+is a triangle pointing down at the crate, stroked in `rgba(18,15,11,.88)` under its amber fill.
+
+### 5.6 Every object says what to do with it
+
+The same principle, applied to the interface. A player who cannot work out how to eat a tin of
+rations or put a rifle in their hand has not been given a mechanic — they have been given a
+puzzle. Three surfaces carry the answer, and they must agree:
+
+- **The hotbar has a name plate.** The selected slot is named, with the key that uses it:
+  `SLOT 4  Ration Tin  SPACE to eat`. A slot showing a glyph and nothing else is a guessing game.
+- **The Field Kit says the verb on every row.** `SPACE to equip`, `click to wear it`,
+  `goes into your ammo count`. The kit is the only place a weapon can be put in the player's hand,
+  and it used to look like a shopping list.
+- **The food panel gives the action, not just the bearing.** `Ration Tin in your bar — Press SPACE
+  to eat it`, or `Diner · 84m SE — go inside and press E on a crate.` A pointer without an
+  instruction tells a hungry player where to walk and leaves them guessing what to press when
+  they get there.
+
+The coach teaches both (`equipped` and `ate` steps) at the moment they apply: `equipped` shows
+up when there is a weapon in the pack that is not in your hand, `ate` when there is something
+usable in the bar.
+
+### 5.7 A weapon has to be able to answer the fight
+
+The complaint that produced this section was one sentence: *"the firing weapon only works when the
+enemy is literally on top of you."* The firing code was correct — the round went where the
+reticle was. Three numbers had never been checked against each other:
+
+| number | value before | what it means |
+| --- | --- | --- |
+| the notice radius | 240m | how far away the Rusted notice you |
+| a gun's reach | 90m – 340m | how far the round actually flies |
+| the weapon you start with | a torch, 40m | a **swung** weapon, not a gun |
+
+So the player began with a torch, every gun they found was shorter than the distance at which
+anything could notice them, and the result was a game where shooting was a thing you did after the
+enemy had already arrived. **A gun whose reach is shorter than the notice radius can never be the
+reason a fight starts.** It is not a weak gun; it is a broken one.
+
+The rules, which `test/weapons.js` enforces:
+
+1. **Every gun reaches at least 240m** — the notice radius. The shortest gun is the Sawn Dust Pump
+   at exactly 240; the Long Marksman reaches 400. The reach differences still matter, because a
+   shot carries as far as the round flies: a longer gun opens a fight from further out than they
+   can see you.
+2. **The torch and the pick mace are swung, not fired.** They stay under 75m, and the interface
+   says so: `click to swing · 40m reach`, never `click to fire`.
+3. **You start with a gun in your hand.** The Longhorn Revolver, six rounds, slot 1. The torch is
+   slot 2 — and it **keeps burning in the pack**, so putting a gun in your hand does not put you in
+   the dark. A light with no visible source is a lie the player has to trust, so when the torch is
+   not in the hand holding the gun, its flame shows at the off hand and the pool of light moves
+   with it.
+4. **The reach is printed wherever the weapon is.** `click to fire · reaches 280m` in the hotbar
+   plate and on the Field Kit row. A player who has to fire at something a long way off to learn
+   how far the gun reaches will conclude the gun does not work.
+5. **A found weapon takes a free hotbar slot**, and the log names the key: `Press 5 to take the
+   Survey Carbine, then SPACE to put it in your hand.` A gun in the pack with no route to the hand
+   is a gun that is never fired.
+6. **Equipping never throws a slot away.** Drawing a gun must not delete the torch from the bar,
+   and the slot that is selected is the slot that shows what is in your hands.
+7. **A shot is a noise.** Firing tells the Rusted within earshot where you are, so a fight can
+   start with a shot instead of waiting for something to walk into you. A silenced weapon carries
+   nothing beyond the distance at which they would have seen you anyway (120m).
+
 ---
 
 ## 6. Lighting

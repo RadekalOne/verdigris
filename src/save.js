@@ -86,6 +86,23 @@ window.VG = window.VG || {};
       p.rep = s.rep || p.rep; p.knownFacts = s.knownFacts || {};
       p.readClues = s.readClues || {}; p.solvedSolutions = s.solvedSolutions || {};
       p.foundClues = s.foundClues || {};
+      /* A save written before the flats had a usable gun would load a world
+         with nothing to shoot, and the player would rightly conclude the
+         game is broken. The Survey Office issues you a revolver if you turn
+         up with none - and it says which key to press. */
+      let hasGun = false;
+      for (const id in p.inv) {
+        const it = VG.item(id);
+        if (it && it.cat === 'weapon' && VG.isRangedWeapon(it)) { hasGun = true; break; }
+      }
+      if (!hasGun) {
+        p.inv['wpn_long_horn'] = 1;
+        p.inv['ammo_slug'] = (p.inv['ammo_slug'] || 0) + 6;
+        p.ammo['ammo_slug'] = (p.ammo['ammo_slug'] || 0) + 6;
+        const free = p.hotbar.indexOf(null);
+        if (free >= 0) p.hotbar[free] = 'wpn_long_horn';
+        p.issuedRevolver = true;
+      }
       VG.state.time = d.time || 0;
       const openSet = new Set(d.opened || []);
       for (const c of VG.World.containers) if (openSet.has(c.id)) c.opened = true;

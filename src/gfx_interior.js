@@ -529,13 +529,41 @@ window.VG.GFX = window.VG.GFX || {};
   /* the scene                                                            */
   /* ------------------------------------------------------------------ */
 
+  /* The darkness is a veil, and the veil lives on its own canvas.
+     Punching the lit holes straight into the scene used to erase the room:
+     the veil was painted onto the canvas, and then destination-out took the
+     alpha out of everything underneath it as well - the floor, the walls,
+     the furniture and the player. The lit areas came out as holes to the
+     page behind the canvas, and the whole room read as a brown fog with the
+     player floating in it.
+     A hole in the veil now means what it looks like: less dark. The room
+     underneath stays whole, and the light falls on it. */
+  var veilCv = null;
+  var veilCtx = null;
+  var veilW = 0;
+  var veilH = 0;
+
+  function ensureVeil(w, h) {
+    if (!veilCv) {
+      veilCv = document.createElement('canvas');
+      veilCtx = veilCv.getContext('2d');
+    }
+    if (w !== veilW || h !== veilH) {
+      veilW = w;
+      veilH = h;
+      veilCv.width = w;
+      veilCv.height = h;
+    }
+    return veilCtx;
+  }
+
   function lightList(tpl, state, p) {
     var out = [];
     var i, l;
     if (tpl.lights) {
       for (i = 0; i < tpl.lights.length; i++) {
         l = tpl.lights[i];
-        out.push({ x: l.x, y: l.y, r: l.r, c: l.c, i: l.i });
+        out.push({ x: l.x, y: l.y, r: l.r, c: l.c, i: l.i, glow: 1 });
       }
     }
     var d = GFX.daylight ? GFX.daylight(state.time) : { amount: 0.5 };
@@ -547,19 +575,42 @@ window.VG.GFX = window.VG.GFX || {};
           y: win.y + win.h + 18,
           r: 190,
           c: d.amount > 0.45 ? '#8fb6d8' : '#5d7f96',
-          i: 0.30 + (1 - d.amount) * 0.34
+          i: 0.30 + (1 - d.amount) * 0.34,
+          glow: 1
         });
       }
     }
-    /* the torch is a light source and it does not stop working indoors */
-    if (p && p.weapon === 'wpn_scrap_torch') {
-      out.push({ x: p.x, y: p.y, r: 170, c: '#f0b64a', i: 0.55 });
+    /* The torch is a light source and it does not stop working indoors. It
+       sits at the flame and not on the player's chest: a pool of light
+       starts where the light is. It also keeps burning in the pack, so
+       putting a gun in your hand does not put you in the dark - and the
+       pool and the flame are in the same place, because a pool of light
+       with nothing in it is a lie the player has to trust. */
+    var tl = VG.torchLight ? VG.torchLight(p) : null;
+    if (tl) {
+      out.push({
+        x: tl.x,
+        y: tl.y,
+        r: 150,
+        c: '#f0b64a',
+        i: 0.52,
+        glow: 1
+      });
     }
     /* the doorway is a light source too. The way out is the brightest thing
        in the room, and it stays that way whatever the hour is. */
     if (VG.INT) {
       var door = VG.INT.doorOf(tpl);
-      if (door) out.push({ x: door.x, y: door.y - 10, r: 210, c: '#ffd98f', i: 0.62 });
+      if (door) out.push({ x: door.x, y: door.y - 10, r: 210, c: '#ffd98f', i: 0.62, glow: 1 });
+    }
+    /* The player always stands in a little clearer air. Outdoors the light
+       pass opens a bright circle round them; indoors the only hole in the
+       dark used to be the torch's, so anyone who put the torch away stood
+       in the murk with their own coat for company. This one opens a hole
+       and adds no colour of its own: it never washes the figure, it only
+       keeps the ground under them readable. */
+    if (p) {
+      out.push({ x: p.x, y: p.y, r: 132, c: '#c9d6de', i: 0.34, glow: 0 });
     }
     return out;
   }
@@ -615,52 +666,63 @@ window.VG.GFX = window.VG.GFX || {};
     paintWindows(ctx, tpl, 1 - d.amount);
 
     /* the crates you can search */
+    var foodMarks = [];
     if (room.containers && GFX.paintContainerAt) {
       for (i = 0; i < room.containers.length; i++) {
         var c = room.containers[i];
         if (!c || c.opened) continue;
         GFX.paintContainerAt(ctx, c, c.ix, c.iy);
+        if (c.food && p && p.food <= 55) foodMarks.push(c);
       }
     }
 
     /* the way out */
     paintExit(ctx, tpl, state ? state.anim : 0);
 
-    /* the player, in the same logical space as the room */
-    if (p && GFX.paintPlayerOnly) GFX.paintPlayerOnly(ctx, { x: 0, y: 0 }, p, state);
-
     ctx.restore();
 
     /* ---- lighting, in screen space ---- */
     var lights = lightList(tpl, state, p);
     var dark = 0.20 + d.amount * 0.58;
+    var dpr = (view && view.dpr) || 1;
 
-    ctx.save();
-    ctx.fillStyle = 'rgba(5,7,11,' + dark.toFixed(3) + ')';
-    ctx.fillRect(0, 0, vw, vh);
-
-    ctx.globalCompositeOperation = 'destination-out';
+    /* the veil, and the lit holes in it */
+    var vc = ensureVeil(Math.max(1, Math.ceil(vw * dpr)), Math.max(1, Math.ceil(vh * dpr)));
+    vc.setTransform(1, 0, 0, 1, 0, 0);
+    vc.clearRect(0, 0, veilW, veilH);
+    vc.fillStyle = 'rgba(5,7,11,' + dark.toFixed(3) + ')';
+    vc.fillRect(0, 0, vw, vh);
+    vc.globalCompositeOperation = 'destination-out';
     for (i = 0; i < lights.length; i++) {
       var l = lights[i];
       var lx = (l.x - cam.x) * z, ly = (l.y - cam.y) * z;
       var lr = l.r * z;
       if (lx + lr < 0 || ly + lr < 0 || lx - lr > vw || ly - lr > vh) continue;
-      var g = ctx.createRadialGradient(lx, ly, 0, lx, ly, lr);
+      var g = vc.createRadialGradient(lx * dpr, ly * dpr, 0, lx * dpr, ly * dpr, lr * dpr);
       g.addColorStop(0, 'rgba(0,0,0,' + (0.85 * l.i + 0.15).toFixed(3) + ')');
       g.addColorStop(0.55, 'rgba(0,0,0,' + (0.45 * l.i).toFixed(3) + ')');
       g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(lx - lr, ly - lr, lr * 2, lr * 2);
+      vc.fillStyle = g;
+      vc.fillRect((lx - lr) * dpr, (ly - lr) * dpr, lr * 2 * dpr, lr * 2 * dpr);
     }
+    vc.globalCompositeOperation = 'source-over';
+    ctx.drawImage(veilCv, 0, 0, vw, vh);
 
+    /* the colour of the light itself, added over the room it falls on. It
+       is kept lean on purpose: a fat additive wash turns a lit room into a
+       fog, and a fog has no edges and no shapes in it. */
+    ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (i = 0; i < lights.length; i++) {
       var l2 = lights[i];
+      if (!l2.glow) continue;
       var lx2 = (l2.x - cam.x) * z, ly2 = (l2.y - cam.y) * z;
       var lr2 = l2.r * z;
       if (lx2 + lr2 < 0 || ly2 + lr2 < 0 || lx2 - lr2 > vw || ly2 - lr2 > vh) continue;
-      var g2 = ctx.createRadialGradient(lx2, ly2, 0, lx2, ly2, lr2 * 0.8);
-      g2.addColorStop(0, hexA(l2.c, 0.30 * l2.i + 0.06));
+      var ga = 0.20 * l2.i + 0.04;
+      var g2 = ctx.createRadialGradient(lx2, ly2, 0, lx2, ly2, lr2 * 0.75);
+      g2.addColorStop(0, hexA(l2.c, ga));
+      g2.addColorStop(0.45, hexA(l2.c, ga * 0.34));
       g2.addColorStop(1, hexA(l2.c, 0));
       ctx.fillStyle = g2;
       ctx.fillRect(lx2 - lr2, ly2 - lr2, lr2 * 2, lr2 * 2);
@@ -675,7 +737,56 @@ window.VG.GFX = window.VG.GFX || {};
     vg.addColorStop(1, 'rgba(0,0,0,.52)');
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, vw, vh);
+
+    /* ---- the marks and the player, last ---- */
+    ctx.save();
+    ctx.scale(z, z);
+    ctx.translate(-cam.x, -cam.y);
+
+    /* The crate that holds rations says so, but only to a hungry player.
+       Pointing at the building is half of the route to food; the other half
+       is finding the right crate in a room where every crate looks the same,
+       and a route that dead-ends is not a route. */
+    for (i = 0; i < foodMarks.length; i++) {
+      var mt = (state && typeof state.anim === 'number') ? state.anim : 0;
+      paintFoodMark(ctx, foodMarks[i].ix, foodMarks[i].iy, mt);
+    }
+
+    /* The figure is drawn after the light, not before it. The veil and the
+       torch glow used to land on the player as well as on the room, and a
+       coat washed with the same amber as the floor is a smudge, not a
+       person. Drawn last, the player is the one thing in the room that no
+       light can dim and no pool of light can wash out. */
+    if (p && GFX.paintPlayerOnly) {
+      GFX.paintPlayerOnly(ctx, { x: 0, y: 0 }, p, state);
+    }
+    ctx.restore();
   };
+
+  /* A small amber pointer over the crate that holds food. It carries its own
+     dark edge, because a mark drawn over a lit thing needs its own darkness
+     under it or it dissolves into whatever it is drawn on. */
+  function paintFoodMark(ctx, x, y, t) {
+    var pulse = 0.5 + 0.5 * Math.sin(t * 3.1);
+    var w = 4.6;
+    var top = y - 20 - pulse * 2.4;
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(18,15,11,.88)';
+    ctx.lineWidth = 3.6;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 9);
+    ctx.lineTo(x - w, top);
+    ctx.lineTo(x + w, top);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(232,179,74,' + (0.74 + pulse * 0.22).toFixed(3) + ')';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,238,186,.9)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
 
   /* '#rrggbb' plus an alpha -> rgba() */
   function hexA(hex, a) {

@@ -443,12 +443,13 @@ window.VG = window.VG || {};
     view: { w: 1280, h: 720, dpr: 1 },
     DOOR_REACH: 46,
     EXIT_REACH: 52,
-    /* The hotbar and the coach line sit across the bottom of the canvas. The
-       room is fitted into the band above them, so the doorway - which is
-       always in the south wall - can never end up behind a slot box. This is
-       the whole difference between a room you can leave and a room you are
-       trapped in because you cannot find the way out. */
-    MARGIN_BOTTOM: 104,
+    /* The hotbar, the name plate over it and the coach line sit across the
+       bottom of the canvas. The room is fitted into the band above them, so
+       the doorway - which is always in the south wall - can never end up
+       behind a slot box. This is the whole difference between a room you can
+       leave and a room you are trapped in because you cannot find the way
+       out. */
+    MARGIN_BOTTOM: 130,
     /* After you step out, the door must not immediately offer to take you
        back in. Being pushed straight back inside the moment you leave is the
        most confusing thing this game can do to you. */
@@ -648,6 +649,12 @@ window.VG = window.VG || {};
   INT.update = function (p, dt, input) {
     if (!INT.active) return;
     if (VG.updatePlayerInterior) VG.updatePlayerInterior(p, dt, input, INT.active);
+    /* There is no aiming in a room: no crosshair, no cursor, nothing to aim
+       at. Outdoors the figure turns to the pointer, and outside the room
+       that pointer is frozen at whatever it was on the flats, so a player
+       who walked in facing one way kept facing that way while they walked
+       the other. Inside, the figure turns the way they walk. */
+    p.aim = p.face;
     /* walking out through the gap in the south wall leaves the building */
     if (INT.active && INT.atDoorway(p)) INT.exit(p);
   };

@@ -209,17 +209,27 @@ window.VG = window.VG || {};
       }
     }
 
-    /* where the food is. The same courtesy, the same panel. */
+    /* where the food is, and what to do about it. The same courtesy, the
+       same panel. A pointer without an instruction is not help: it tells a
+       hungry player where to walk and leaves them guessing what to press
+       when they get there. */
     const fh = document.getElementById('foodhint');
     let foodShown = false;
     if (fh) {
       const hungry = p.food <= 55;
-      const cf = hungry && VG.closestFood ? VG.closestFood(p, world) : null;
-      if (cf) {
+      const carried = VG.carriedFood ? VG.carriedFood(p) : null;
+      const cf = (hungry && !carried && VG.closestFood) ? VG.closestFood(p, world) : null;
+      if (carried) {
         fh.style.display = 'block';
         foodShown = true;
-        fh.innerHTML = '<div class="t">' + cf.poi.name + ' · ' + Math.round(cf.dist) + 'm ' + cf.dir + '</div>' +
-          '<div class="d">' + (cf.note || 'Provisions were kept there.') + '</div>';
+        fh.innerHTML = '<div class="t">' + VG.htmlEscape(carried.item.name) + ' in your bar</div>' +
+          '<div class="d">Press SPACE to eat it. Press ' + (carried.slot + 1) + ' to pick that slot.</div>';
+      } else if (cf) {
+        fh.style.display = 'block';
+        foodShown = true;
+        fh.innerHTML = '<div class="t">' + VG.htmlEscape(cf.poi.name) + ' · ' + Math.round(cf.dist) + 'm ' + cf.dir + '</div>' +
+          '<div class="d">' + VG.htmlEscape(cf.note || 'Provisions were kept there.') +
+          ' Go inside and press E on a crate.</div>';
       } else {
         fh.style.display = 'none';
       }
@@ -250,7 +260,20 @@ window.VG = window.VG || {};
           (it ? VG.htmlEscape(it.glyph) : '·') +
           (qty !== null && qty !== undefined ? '<span class="q">' + qty + '</span>' : '') + '</div>';
       }
-      hb.innerHTML = h;
+      /* The name plate over the bar. A slot that shows a glyph and nothing
+         else is a guessing game: the player has no way to tell a ration tin
+         from a rivet sling, and no way to know that SPACE does anything at
+         all. The plate names the selected slot and the key that uses it. */
+      const selId = p.hotbar[p.sel];
+      const selIt = selId ? VG.item(selId) : null;
+      let plate = '';
+      if (selIt) {
+        const hint = VG.useHint ? VG.useHint(selIt, p) : '';
+        plate = '<div id="slotinfo" class="on"><span class="k">SLOT ' + (p.sel + 1) + '</span><b>' +
+          VG.htmlEscape(selIt.name) + '</b>' +
+          (hint ? ' <span class="act">' + VG.htmlEscape(hint) + '</span>' : '') + '</div>';
+      }
+      hb.innerHTML = plate + '<div class="slots">' + h + '</div>';
     }
 
     // danger vignette
@@ -352,10 +375,25 @@ window.VG = window.VG || {};
       const it = VG.item(id), n = p.inv[id];
       const mods = (it.mods || []).map((m) => '<span class="tag">' + m + '</span>').join('');
       const passive = it.passive ? '<span class="tag on">passive</span>' : '';
+      /* Every row says what clicking it will do. A list of names with no
+         verbs is a list the player cannot act on: this is the only place a
+         weapon can be put in their hand, and it used to look like a
+         shopping list. */
+      let act = '';
+      if (it.cat === 'weapon' && p.weapon === id) act = '<span class="tag on">in hand</span>';
+      else if (it.cat === 'armor' && p.armor === id) act = '<span class="tag on">worn</span>';
+      const hint = VG.useHint ? VG.useHint(it, p) : '';
+      /* The verb is shown even for the weapon already in your hand. The
+         "in hand" tag says where it is; the verb says what it does and how
+         far it reaches, and the reach is the number that decides whether
+         the gun is worth carrying. */
+      const verb = hint
+        ? '<span class="do">' + VG.htmlEscape(hint) + '</span>' : '';
       h += '<div class="listitem" data-use="' + id + '"><div class="n rar' + it.rarity + '">' +
         VG.htmlEscape(it.glyph) + '  ' + VG.htmlEscape(it.name) + ' <span class="muted">x' + n + '</span></div>' +
         '<div class="d">' + VG.htmlEscape(it.desc) + '</div>' +
-        '<div class="meta">' + it.cat + ' · ' + it.val + ' scrap · ' + (it.w || 1) + ' load ' + mods + passive + '</div></div>';
+        '<div class="meta">' + it.cat + ' · ' + it.val + ' scrap · ' + (it.w || 1) + ' load' +
+        (verb ? ' · ' + verb : '') + mods + passive + act + '</div></div>';
     }
     h += '</div>';
     body.innerHTML = h;

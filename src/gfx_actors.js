@@ -12,6 +12,24 @@ window.VG.GFX = window.VG.GFX || {};
   const KIND_HP = { rusted: 70, drover: 46, warden: 120 };
   const CULL = 72;
 
+  /* ---- the player, indoors ----
+     Outdoors the player wears a dull olive coat and reads against sand and
+     scrub. Indoors they stand in the middle of their own torchlight on a
+     floor that belongs to the same family of colour, and a coat the same
+     value as the floor is not a person, it is a smudge. So the figure that
+     is lit by its own lamp is drawn in the tone it would actually be in -
+     bone and dust, bright against the room - with a dark hood for structure
+     and a dark edge all the way round it.
+     The dark edge is the same rule the hit marker and the damage number
+     follow: a mark drawn over a lit thing needs its own darkness under it,
+     or it dissolves into the thing it is drawn on. */
+  const LIT_COAT = '#c4b795';
+  const LIT_HOOD = '#6a604c';
+  const LIT_ARM = '#8d8467';
+  const LIT_SASH = 'rgba(226,142,46,.96)';
+  const HALO = 'rgba(7,8,6,.66)';
+  const RIM_LIT = 'rgba(255,241,214,.44)';
+
   /* ---------- module state (never written back into the game) ---------- */
   let lastCam = { x: 0, y: 0 };
   let walkPhase = 0;
@@ -72,8 +90,12 @@ window.VG.GFX = window.VG.GFX || {};
   }
 
   /* the four-layer body recipe: gradient fill, ink edge, north-west rim
-     light and south-east contact shadow */
-  function paintBody(ctx, pathFn, base, top, bottom) {
+     light and south-east contact shadow. The rim colour and width are
+     arguments because a lit figure needs a stronger rim than one that is
+     standing in flat daylight. */
+  function paintBody(ctx, pathFn, base, top, bottom, rimCol, rimW) {
+    const rim = rimCol || RIM;
+    const rw = (rimW === undefined || rimW === null) ? 1.8 : rimW;
     let fill = base;
     if (ctx.createLinearGradient) {
       const g = ctx.createLinearGradient(0, top, 0, bottom);
@@ -99,8 +121,8 @@ window.VG.GFX = window.VG.GFX || {};
     ctx.translate(1.1, 1.1);
     ctx.beginPath();
     pathFn(ctx);
-    ctx.strokeStyle = RIM;
-    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = rim;
+    ctx.lineWidth = rw;
     ctx.stroke();
     ctx.restore();
 
@@ -593,10 +615,11 @@ window.VG.GFX = window.VG.GFX || {};
     const h = 7.4 * fl;
     const w = 2.9 + (2 - fl) * 0.9;
     ctx.save();
-    ctx.fillStyle = 'rgba(255,196,96,.16)';
+    ctx.fillStyle = 'rgba(255,196,96,.10)';
     ctx.beginPath();
-    ctx.arc(x, y - h * 0.25, 8.5, 0, VG.TAU);
+    ctx.arc(x, y - h * 0.25, 7, 0, VG.TAU);
     ctx.fill();
+    ctx.restore();
     ctx.fillStyle = '#e07a26';
     ctx.beginPath();
     ctx.moveTo(x, y - h);
@@ -616,7 +639,7 @@ window.VG.GFX = window.VG.GFX || {};
     ctx.restore();
   }
 
-  function paintPlayer(ctx, p, state, cam, time) {
+  function paintPlayer(ctx, p, state, cam, time, lit) {
     const sx = p.x - cam.x;
     const sy = p.y - cam.y;
     /* The figure faces where the player is pointing, not where they last
@@ -628,7 +651,7 @@ window.VG.GFX = window.VG.GFX || {};
     const bob = p.moving ? Math.sin(walkPhase) * 1.2 : 0;
     const py = sy + bob;
 
-    softShadow(ctx, sx + 2, sy + 3, 9, 5.4, 0.34);
+    softShadow(ctx, sx + 2, sy + 3, 9, 5.4, lit ? 0.44 : 0.34);
 
     /* radiation warning under the figure */
     if (typeof p.dose === 'number' && p.dose > 55) {
@@ -646,7 +669,30 @@ window.VG.GFX = window.VG.GFX || {};
 
     /* dust coat: rounded trapezoid, hem swung opposite the facing */
     const hx = -fx * 1.6, hy = -fy * 0.7;
-    paintBody(ctx, function (c) { coatPath(c, hx, hy); }, '#7e7358', -10, 10);
+    const coatBase = lit ? LIT_COAT : '#7e7358';
+    const hoodBase = lit ? LIT_HOOD : '#5f5645';
+    const hox = fx * 1.5, hoy = -8.2 + fy * 1.1;
+
+    /* The dark edge. Drawn first, under the body, so it reads as the
+       outline of the figure and not as a ring around it. */
+    if (lit) {
+      ctx.save();
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = HALO;
+      ctx.lineWidth = 3.4;
+      ctx.beginPath();
+      coatPath(ctx, hx, hy);
+      ctx.stroke();
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ellipsePath(ctx, hox, hoy, 4.5, 4.1, 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    paintBody(ctx, function (c) { coatPath(c, hx, hy); }, coatBase, -10, 10,
+      lit ? RIM_LIT : RIM, lit ? 2.4 : 1.8);
 
     /* shoulder line */
     ctx.save();
@@ -666,7 +712,7 @@ window.VG.GFX = window.VG.GFX || {};
 
     /* surveyor's sash — the player's amber marker */
     ctx.save();
-    ctx.fillStyle = 'rgba(240,182,74,.85)';
+    ctx.fillStyle = lit ? LIT_SASH : 'rgba(240,182,74,.85)';
     ctx.beginPath();
     ctx.moveTo(-5.6, -3.4);
     ctx.lineTo(-4.3, -3.4);
@@ -677,15 +723,14 @@ window.VG.GFX = window.VG.GFX || {};
     ctx.restore();
 
     /* hood and head, turned toward the facing */
-    const hox = fx * 1.5, hoy = -8.2 + fy * 1.1;
     ctx.save();
     ctx.beginPath();
     ellipsePath(ctx, hox, hoy, 4.5, 4.1, 0);
-    let hoodFill = '#5f5645';
+    let hoodFill = hoodBase;
     if (ctx.createLinearGradient) {
       const hg = ctx.createLinearGradient(0, hoy - 4.1, 0, hoy + 4.1);
-      hg.addColorStop(0, VG.shade('#5f5645', 0.14));
-      hg.addColorStop(1, VG.shade('#5f5645', -0.18));
+      hg.addColorStop(0, VG.shade(hoodBase, 0.14));
+      hg.addColorStop(1, VG.shade(hoodBase, -0.18));
       hoodFill = hg;
     }
     ctx.fillStyle = hoodFill;
@@ -693,6 +738,20 @@ window.VG.GFX = window.VG.GFX || {};
     ctx.strokeStyle = INK;
     ctx.lineWidth = 1;
     ctx.stroke();
+    /* a lit hood gets a rim of its own, or the head is a hole in the coat */
+    if (lit) {
+      ctx.save();
+      ctx.beginPath();
+      ellipsePath(ctx, hox, hoy, 4.5, 4.1, 0);
+      ctx.clip();
+      ctx.translate(1.1, 1.1);
+      ctx.beginPath();
+      ellipsePath(ctx, hox, hoy, 4.5, 4.1, 0);
+      ctx.strokeStyle = RIM_LIT;
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+      ctx.restore();
+    }
     /* the hood opening is where the player is looking */
     ctx.beginPath();
     ellipsePath(ctx, hox + fx * 2.2, hoy + fy * 1.9, 2.3, 1.9, face);
@@ -700,11 +759,23 @@ window.VG.GFX = window.VG.GFX || {};
     ctx.fill();
     ctx.restore();
 
-    /* arm and weapon */
-    const handX = fx * 7.5 + nx * 2.8, handY = fy * 7.5 + ny * 2.8;
+    /* arm and weapon. The hand is held out to the side: a torch directly
+       over the head sits on the hood, and a figure whose head is hidden
+       behind its own flame is a figure with no head. */
+    const handX = fx * 7.5 + nx * 4.6, handY = fy * 7.5 + ny * 4.6;
     const tipX = handX + fx * 6.5, tipY = handY + fy * 6.5;
     ctx.save();
-    ctx.strokeStyle = '#6b6249';
+    if (lit) {
+      /* the arm gets the same dark edge as the body */
+      ctx.strokeStyle = HALO;
+      ctx.lineWidth = 5.6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, -3.8);
+      ctx.lineTo(handX, handY);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = lit ? LIT_ARM : '#6b6249';
     ctx.lineWidth = 3.2;
     ctx.lineCap = 'round';
     ctx.beginPath();
@@ -737,6 +808,13 @@ window.VG.GFX = window.VG.GFX || {};
       ctx.arc(tipX, tipY, 1.8, 0, VG.TAU);
       ctx.fill();
       ctx.restore();
+    }
+    /* The torch keeps burning in the pack. If the light you are standing in
+       has nothing in it, the player is standing inside a lie - so the flame
+       shows at the off hand whenever the torch is not in the hand that is
+       holding the gun. */
+    if (p.weapon !== TORCH_ID && p.inv && p.inv[TORCH_ID] > 0) {
+      paintFlame(ctx, -fx * 3.0 - nx * 4.6, -fy * 3.0 - ny * 4.6, time);
     }
     ctx.restore();
   }
@@ -796,7 +874,10 @@ window.VG.GFX = window.VG.GFX || {};
 
   /* The player on their own. The interior scene has its own coordinate
      space and the flats' enemies have no business being drawn inside a
-     diner, so the interior renderer asks for just the figure. */
+     diner, so the interior renderer asks for just the figure. It also asks
+     for the lit version of it: indoors the figure is the one thing in the
+     room that has to be readable at a glance, and the flat daylight coat
+     dissolves into a floor of the same colour. */
   GFX.paintPlayerOnly = function (ctx, cam, p, state) {
     if (!ctx || !p) return;
     cam = cam || { x: 0, y: 0 };
@@ -804,7 +885,7 @@ window.VG.GFX = window.VG.GFX || {};
     const time = typeof state.anim === 'number' ? state.anim
       : (typeof state.time === 'number' ? state.time : 0);
     walkPhase = updateWalk(p);
-    paintPlayer(ctx, p, state, cam, time);
+    paintPlayer(ctx, p, state, cam, time, true);
   };
 
   /* Light registration for the atmosphere pass. Coordinates are screen
@@ -827,19 +908,18 @@ window.VG.GFX = window.VG.GFX || {};
       : (typeof state.time === 'number' ? state.time : 0);
     const c = resolveCam(cam);
 
-    /* the torch: a small flickering flame that punches a warm hole */
-    if (p.weapon === TORCH_ID) {
-      const face = typeof p.face === 'number' ? p.face : 0;
-      const fx = Math.cos(face), fy = Math.sin(face);
-      const nx = -fy, ny = fx;
-      const tipX = fx * 14.0 + nx * 2.8, tipY = fy * 14.0 + ny * 2.8;
+    /* the torch: a small flickering flame that punches a warm hole. It
+       burns in the pack as well as in your hand, so the pool of light
+       follows the flame and not the weapon you happen to be holding. */
+    const tl = VG.torchLight ? VG.torchLight(p) : null;
+    if (tl) {
       const flick = 1 + Math.sin(time * 11.3) * 0.12 + Math.sin(time * 23.1) * 0.07;
       lights.push({
-        x: p.x + tipX - c.x,
-        y: p.y + tipY - c.y,
-        r: 132 * flick,
+        x: tl.x - c.x,
+        y: tl.y - c.y,
+        r: (tl.held ? 132 : 96) * flick,
         color: '255,176,88',
-        intensity: 0.62 * flick
+        intensity: (tl.held ? 0.62 : 0.46) * flick
       });
     }
 

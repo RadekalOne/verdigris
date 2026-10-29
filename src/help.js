@@ -13,6 +13,8 @@ window.VG = window.VG || {};
     searched: false,
     fired: false,
     entered: false,
+    equipped: false,
+    ate: false,
     helped: false,
     read: false,
     deduced: false,
@@ -27,7 +29,7 @@ window.VG = window.VG || {};
         ['W A S D  /  arrows', 'Move'],
         ['SHIFT', 'Sprint. Costs stamina; walking is free'],
         ['mouse', 'Aim'],
-        ['left click', 'Fire the selected weapon'],
+        ['left click', 'Fire the weapon in your hand, or swing it'],
         ['1 - 5', 'Choose a hotbar slot'],
         ['SPACE', 'Equip or use the selected item'],
         ['M', 'Map. It fills in as you walk']
@@ -81,10 +83,11 @@ window.VG = window.VG || {};
   const SHOOTING = [
     ['Aiming', 'The mouse is your aim. The reticle sits under the cursor and the round goes exactly there — there is no spread, so if the reticle is on something, you hit it. Your figure turns to face where you are pointing.'],
     ['Firing', 'Left click fires. Hold the mouse down to keep firing at the weapon\'s rate of fire. The number on the weapon in the hotbar is the rounds it has left.'],
-    ['Reach', 'A round lives exactly as long as the weapon\'s reach, so a revolver covers 150 metres of flats and a marksman covers 340. Point at something beyond that and the round dies in the air.'],
-    ['Swinging', 'The torch and the pick mace are swung, not fired. A swing is a short arc in front of you, drawn where it lands. They need no ammunition.'],
+    ['Reach', 'A round lives exactly as long as the weapon\'s reach, so the revolver you start with covers 280 metres of flats and a marksman covers 400. Point at something beyond that and the round dies in the air. The hotbar and the Field Kit both print the reach, so you can read it before you shoot rather than after.'],
+    ['The notice radius', 'The Rusted see you at 240 metres. Every gun reaches at least that far, so a gun is never a thing you can only use at arm\'s length — but a longer gun lets you open a fight from further out than they can see you.'],
+    ['Swinging', 'The torch and the pick mace are swung, not fired. A swing is a short arc in front of you, drawn where it lands. They need no ammunition. The torch burns in the pack as well as in your hand, so you are never without light because you picked up a gun.'],
     ['Ammunition', 'Rounds are pooled by type and shared between the guns that take them. Craft them at the workbench, or find them. Out of ammunition and the weapon says so.'],
-    ['Noise', 'A shot carries. Silenced weapons do not bring the Rusted the way the others do.']
+    ['Noise', 'A shot carries as far as the round flies, so firing is how a fight starts and not only how it ends. Silenced weapons do not bring the Rusted the way the others do.']
   ];
 
   /* the ordered first-run checklist; the coach points at the first undone one.
@@ -93,14 +96,44 @@ window.VG = window.VG || {};
      a mechanic the player will never meet is worse than no coach. */
   const STEPS = [
     { id: 'moved', keys: ['W', 'A', 'S', 'D'], text: 'Walk around the flats. Hold SHIFT to sprint.' },
+    {
+      id: 'equipped', keys: ['1-5', 'SPACE', 'TAB'],
+      text: 'Press 1-5 to pick a hotbar slot, then SPACE to use what is in it: a weapon goes in your hand, a tin gets eaten, a canteen gets drunk. Anything else you find lands in your Field Kit (TAB) - click a weapon there to put it in your hand.',
+      when: () => {
+        const p = VG.Player;
+        if (!p || !p.inv) return false;
+        for (const id in p.inv) {
+          const it = VG.item(id);
+          if (!it) continue;
+          if (it.cat === 'weapon' && p.weapon !== id) return true;
+          if (it.cat === 'armor' && p.armor !== id) return true;
+        }
+        return false;
+      }
+    },
     { id: 'searched', keys: ['E'], text: 'Find something to search. Press E when the prompt appears.' },
     {
       id: 'fired', keys: ['mouse', 'left click'],
-      text: 'The mouse aims and the left button fires. The round goes exactly where the reticle is - no spread - and your figure turns to face it.'
+      text: 'The mouse aims and the left button fires. The round goes exactly where the reticle is - no spread - and it dies at the end of your weapon\'s reach, which the hotbar prints. The torch is swung, not fired: a short arc in front of you, and no ammunition.'
     },
     {
       id: 'entered', keys: ['E'],
       text: 'Buildings have doors. Walk up to a marked threshold and press E to go inside. What you are looking for may be in the room.'
+    },
+    {
+      id: 'ate', keys: ['SPACE', '1-5'],
+      text: 'SPACE uses what is in the selected hotbar slot - a canteen to drink, a dressing to heal, a ration tin to eat. Press 1-5 to change slot.',
+      when: () => {
+        const p = VG.Player;
+        if (!p || !p.hotbar) return false;
+        for (let i = 0; i < p.hotbar.length; i++) {
+          const id = p.hotbar[i];
+          if (!id) continue;
+          const it = VG.item(id);
+          if (it && it.cat === 'aid' && !it.passive) return true;
+        }
+        return false;
+      }
     },
     {
       id: 'helped', keys: ['E'],
@@ -183,7 +216,6 @@ window.VG = window.VG || {};
     /* ---- rendering ---- */
 
     coachText: function () {
-      if (flags.dismissed) return null;
       const p = VG.Player;
       /* Inside a building the only question that matters is how to get out.
          This outranks the survival nudges: there is no water within reach of
@@ -191,10 +223,13 @@ window.VG = window.VG || {};
       if (VG.INT && VG.INT.active) {
         return 'You are inside. The way out is the lit gap in the far wall — walk into it, or press ESC.';
       }
-      /* a survival warning always outranks the tutorial nudge */
+      /* a survival warning always outranks the tutorial nudge, and it
+         outranks a dismissed coach as well: a player who closed the coach
+         still has to be told when they are about to die of thirst. */
       if (p) {
         for (const a of ALERTS) if (a.when(p)) return a.text;
       }
+      if (flags.dismissed) return null;
       const s = VG.Help.next();
       if (!s) return null;
       return s.text;

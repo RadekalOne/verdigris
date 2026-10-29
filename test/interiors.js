@@ -53,6 +53,10 @@ const ctx = makeCtx();
 const canvasEl = { width: 1280, height: 720, getContext: function () { return ctx; }, style: {} };
 ctx.canvas = canvasEl;
 
+/* Every canvas the game creates is remembered, so a test can look at what
+   was drawn on the offscreen ones - the darkness veil among them. */
+const createdCanvasCtxs = [];
+
 const sandbox = {
   window: {},
   console: console,
@@ -63,7 +67,11 @@ const sandbox = {
   document: {
     createElement: function (tag) {
       if (tag !== 'canvas') return { style: {} };
-      return { width: 0, height: 0, getContext: function () { return makeCtx(); }, style: {} };
+      const c = makeRecorder();
+      createdCanvasCtxs.push(c);
+      const cv = { width: 0, height: 0, style: {}, getContext: function () { return c; } };
+      c.canvas = cv;
+      return cv;
     },
     getElementById: function () { return null; }
   }
@@ -91,6 +99,9 @@ console.log('== loading modules ==');
 const VG = sandbox.window.VG;
 if (!VG) { console.log('FATAL: VG never defined'); process.exit(1); }
 if (!VG.log) VG.log = () => { };
+/* the item index is built when the game boots; the test never boots, so it
+   has to be built here or every item lookup comes back empty */
+if (VG.itemIndex && !VG.ITEM) VG.itemIndex();
 
 console.log('\n== the seventeen rooms ==');
 const TPL = VG.INTERIOR_TEMPLATES || [];
@@ -461,6 +472,136 @@ try {
   VG.INT.findTarget(VG.Player);
   ok(true, 'the interior code survives an empty world');
 } catch (e) { ok(false, 'empty world threw: ' + e.message); }
+
+console.log('\n== the player is legible in a room ==');
+/* This drives the real interior renderer against a recording canvas and
+   looks at the ORDER of the operations, because that is the thing that was
+   wrong. The player used to be painted before the light, so the veil and the
+   torch glow landed on the figure as well as on the room: the coat came out
+   the same amber as the floor it stood on and the player was a smudge.
+   A source grep cannot see that. The operation log can. */
+function makeRecorder() {
+  const c = makeCtx();
+  const ops = [];
+  c.ops = ops;
+  /* Every gradient gets its own object. The stub context hands out one
+     shared gradient, and a shared gradient throws away the stops of the
+     gradient before it - which is exactly the kind of lie this test exists
+     to catch. */
+  c.createLinearGradient = function () {
+    const g = { kind: 'lin', stops: [] };
+    g.addColorStop = function (o, col) { g.stops.push([o, col]); };
+    return g;
+  };
+  c.createRadialGradient = function () {
+    const g = { kind: 'rad', stops: [] };
+    g.addColorStop = function (o, col) { g.stops.push([o, col]); };
+    return g;
+  };
+  c.fill = function () { ops.push({ op: 'fill', style: c.fillStyle }); };
+  c.stroke = function () { ops.push({ op: 'stroke', style: c.strokeStyle, lw: c.lineWidth }); };
+  c.fillRect = function (x, y, w, h) {
+    ops.push({ op: 'fillRect', style: c.fillStyle, comp: c.globalCompositeOperation, x: x, y: y, w: w, h: h });
+  };
+  c.drawImage = function () { ops.push({ op: 'drawImage' }); };
+  return c;
+}
+
+const recCtx = makeRecorder();
+const recCanvas = { width: 1280, height: 617, style: {}, getContext: function () { return recCtx; } };
+recCtx.canvas = recCanvas;
+
+/* the room, with a player standing in it and a torch in their hand */
+const gasTpl = TPL.filter((t) => t.key === 'gas')[0] || TPL[0];
+const litRoom = {
+  poi: poi,
+  tpl: gasTpl,
+  solids: VG.INT.solids(gasTpl),
+  containers: (world.containers || []).filter((c) => c && c.inside === poi.id).slice(0, 3)
+};
+const litPlayer = {
+  x: 240, y: 170, r: 10, speed: 132, face: 0, aim: 0, moving: false,
+  hp: 100, maxhp: 100, stam: 100, food: 30, water: 60, dose: 0,
+  weapon: 'wpn_scrap_torch', sel: 0, hotbar: ['wpn_scrap_torch', null, null, null, null],
+  inv: {}, ammo: {}
+};
+VG.INT.cam = { x: 0, y: 0 };
+VG.INT.zoom = 1.7;
+VG.INT.view = { w: 1280, h: 617, dpr: 1 };
+recCtx.ops.length = 0;
+VG.GFX.paintInterior(recCtx, VG.INT.cam, litRoom, litPlayer,
+  { time: 17 * 3600 + 41 * 60, anim: 1, bullets: [] }, world, VG.INT.view);
+
+/* where the light is, in the operation log */
+const idxVeil = recCtx.ops.findIndex((o) => o.op === 'drawImage');
+let idxGlow = -1;
+recCtx.ops.forEach((o, i) => {
+  if (o.op === 'fillRect' && o.comp === 'lighter') idxGlow = i;
+});
+/* where the figure is: the coat is the one gradient painted in the lit tone */
+let idxCoat = -1;
+recCtx.ops.forEach((o, i) => {
+  if (o.op !== 'fill' || !o.style || !o.style.stops) return;
+  for (const s of o.style.stops) if (s[1] === '#c4b795') idxCoat = i;
+});
+/* and the dark edge that has to be under it */
+let idxHalo = -1;
+recCtx.ops.forEach((o, i) => {
+  if (o.op === 'stroke' && o.style === 'rgba(7,8,6,.66)' && idxHalo < 0) idxHalo = i;
+});
+
+ok(idxVeil >= 0, 'the darkness is a veil that is laid over the room, not a hole punched in it');
+ok(idxCoat >= 0, 'the indoor figure is drawn in the lit tone, not the flat daylight coat');
+ok(idxHalo >= 0 && idxHalo < idxCoat, 'the figure carries its own dark edge, under the body');
+ok(idxVeil >= 0 && idxCoat > idxVeil, 'the figure is drawn after the light, so no veil can dim it');
+ok(idxGlow >= 0 && idxCoat > idxGlow, 'the figure is drawn after the torch glow, so no pool of light can wash it out');
+
+/* and the room itself must not be punched: the lit areas used to be holes
+   to the page behind the canvas, which is why the whole room read as a fog */
+const punches = recCtx.ops.filter((o) => o.op === 'fillRect' && o.comp === 'destination-out');
+ok(punches.length === 0, 'nothing punches a hole in the room itself (' + punches.length + ')');
+
+/* the veil has to be punched in the veil */
+const veilCtx = createdCanvasCtxs.filter((c) =>
+  c.ops.some((o) => o.op === 'fillRect' && o.comp === 'destination-out')).pop();
+ok(!!veilCtx, 'the lit holes are punched in the veil on its own canvas');
+
+console.log('\n== the kit says what to press ==');
+/* Rad could not work out how to eat or how to equip anything, because
+   nothing in the game ever said. Every item now carries the verb for it. */
+ok(typeof VG.useHint === 'function', 'items can say what to press');
+const tin = VG.item('aid_ration_tin');
+ok(!!tin && /eat/i.test(VG.useHint(tin)), 'a ration tin says it is eaten');
+const canteen = VG.item('aid_canteen');
+ok(!!canteen && /drink/i.test(VG.useHint(canteen)), 'a canteen says it is drunk');
+const gun = VG.item('wpn_rivet_sling');
+ok(!!gun && /equip/i.test(VG.useHint(gun)), 'a weapon says it is equipped');
+const jacket = VG.item('armor_duster_coat');
+ok(!!jacket && /wear|equip/i.test(VG.useHint(jacket)), 'armour says it is worn');
+ok(!!tin && /space/i.test(VG.useHint(tin)), 'the verb names the key, not just the action');
+
+/* and the player can be told they are carrying food */
+const hunger = { hotbar: ['wpn_scrap_torch', 'aid_ration_tin', null, null, null], inv: {}, ammo: {} };
+const carried = VG.carriedFood ? VG.carriedFood(hunger) : null;
+ok(!!carried && carried.item.id === 'aid_ration_tin', 'the food in your bar can be found');
+ok(!!carried && carried.slot === 1, 'the food panel can name the slot to press');
+
+/* the coach has to teach the two things that were never taught */
+const helpSrc = fs.readFileSync(path.join(ROOT, 'src/help.js'), 'utf8');
+ok(/id:\s*'equipped'/.test(helpSrc), 'the coach has a step that teaches equipping');
+ok(/id:\s*'ate'/.test(helpSrc), 'the coach has a step that teaches eating');
+ok(/SPACE uses what is in the selected hotbar slot/i.test(helpSrc), 'the coach names the key for the hotbar');
+const uiSrc = fs.readFileSync(path.join(ROOT, 'src/ui.js'), 'utf8');
+ok(/slotinfo/.test(uiSrc), 'the hotbar has a name plate');
+ok(/Press SPACE to eat it/i.test(uiSrc), 'the food panel says the key to press');
+ok(/Go inside and press E on a crate/i.test(uiSrc), 'the food panel says what to do at the building');
+
+console.log('\n== the figure faces the way it walks indoors ==');
+/* Indoors there is no pointer to aim at, so the figure used to keep facing
+   whatever direction the mouse was pointing outside, while it walked the
+   other way. */
+const interiorSrc = fs.readFileSync(path.join(ROOT, 'src/interiors.js'), 'utf8');
+ok(/p\.aim = p\.face/.test(interiorSrc), 'indoors the figure turns the way the player walks');
 
 console.log('\n== file:// rules ==');
 ['src/gfx_interior.js'].forEach((rel) => {

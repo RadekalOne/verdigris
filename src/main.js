@@ -292,6 +292,10 @@ window.VG = window.VG || {};
       x: p.x + Math.cos(ang) * 14, y: p.y + Math.sin(ang) * 14,
       vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: life, dmg: VG.attackDamage(p)
     });
+    /* The shot is a noise. Whatever is close enough to hear it now knows
+       where you are - so a fight can start with a shot instead of waiting
+       for something to walk into you. */
+    if (VG.shotAlert) VG.shotAlert(p, world, range);
   };
 
   /* A hit has to be visible. A round that connects leaves a mark where it
@@ -652,6 +656,22 @@ window.VG = window.VG || {};
       VG.log('Verdigris Flats. ' + VG.nowStamp() + '. Start at the Survey Office trailer.', 'clue');
       VG.log('Search the flats. Read what is left. Close the files.', '');
       VG.log('Channel three is open. If somebody calls, go and see.', '');
+      /* Say what is in your hand and how far it reaches. A player who does
+         not know the reach of their own gun will find out by shooting at
+         something that is still a long way off, and will conclude the gun
+         does not work. */
+      const w0 = VG.playerWeapon(VG.Player);
+      if (w0 && VG.isRangedWeapon(w0)) {
+        VG.log(w0.name + ' in your hand, ' + (VG.Player.ammo[w0.ammo] || 0) +
+          ' rounds. It reaches ' + w0.stats.range + 'm - further than anything on the flats can see you.', 'good');
+      } else if (w0) {
+        VG.log(w0.name + ' in your hand. It is swung, not fired - ' + w0.stats.range + 'm of reach.', 'good');
+      }
+      if (VG.Player.issuedRevolver) {
+        const slot = VG.Player.hotbar.indexOf('wpn_long_horn');
+        VG.log('The Survey Office issues you a Longhorn Revolver and six rounds - it reaches 280m. Press ' +
+          (slot + 1) + ' to take it and SPACE to put it in your hand.', 'good');
+      }
       if (VG.Help) VG.Help.refresh();
       requestAnimationFrame(frame);
     };
