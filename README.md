@@ -445,3 +445,7 @@ Every name, place, item, faction, and piece of lore in this game is original. No
 assets, names, text, or terminology were copied. The mechanics are inspired by the survival-
 exploration genre; the content is its own. Vocabulary is deliberately different: *dose* not
 radiation, *scrap* not caps, *the Rusted* and *Drovers* for hostiles, and no VATS analogue.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Take it, play it, build on it.
