@@ -53,7 +53,7 @@ itself.
 | **World** | 288 × 288 tiles of procedurally generated high desert: salt flats, dunes, scrub, a company town, an industrial belt, a reactor yard, a dry lake. Roads, street grids, ~74 structures, ~180 searchable containers. Every seed spawns you beside a field camp with company within a few tiles. |
 | **Discovery** | You chart places by walking to them. The map fills in as you go; a POI appears once you are within 260 px. |
 | **Loot** | 75 items across 8 categories and 5 rarities. Containers roll by tier — a bank holds better things than a campfire. **Surprise finds** are flagged separately in the log. |
-| **Mystery** | The core. 8 cases, 47 physical clues, 8–12 established facts per case, and a chain of deductions. Read a clue → it establishes a fact. Combine two facts → a deduction yields a new fact. Reach the right facts → you can file a conclusion and close the case. |
+| **Mystery** | The core. 8 cases, 47 physical clues, 8–12 established facts per case, and a chain of deductions. **One file is open at a time**: its evidence is not marked on the map, the journal names the *kind* of building it is in, and closing the file opens the next one somewhere new. Read a clue → it establishes a fact. Combine two facts → a deduction yields a new fact. Reach the right facts → you can file a conclusion and close the case. |
 | **Factions** | The Ledger (keeps the record true), The Choir (worship the machine), Free Line (want the grid running). Reputation gates contracts and shapes who will deal with you. |
 | **Contracts** | 11 faction contracts, tiered by standing. Turning one in shifts reputation and pays in goods. |
 | **Buildings** | The buildings have insides. Seventeen **hand-built rooms** — one for every kind of building that holds a clue — and every building of those kinds on the flats can be entered: a diner, a substation, a bank, a bunker, the control building at Copper Mesa, a sheriff post, a clinic, a school, the market hall. Walk up to a marked threshold and press `E`. Inside there is a floor, walls you cannot walk through, furniture, a torch that still works, and **the crates that used to sit in the yard**. The clue you are chasing is in the room that describes it. |
@@ -316,20 +316,27 @@ Food does not have a pump you can stand at, so it has to live somewhere you can 
 
 ## How a case actually works
 
-1. The **Cases** tab lists eight files. Most start unopened.
-2. Each clue hides in a container at a specific kind of location — a shift log in a
-   substation, a photograph in a diner, a deposition in a sheriff post. Search containers to
-   find them.
-3. Reading a clue establishes a **fact** — a claim, not a topic. *"The plant was shut down by
-   hand at 04:12."*
+The Survey Office works **one file at a time**. That is the whole difference between a mystery and a
+spreadsheet: the evidence is not marked on your map, it is *somewhere*, and the only way to know which
+building is the right one is to go and look.
+
+1. The **Cases** tab lists eight files. The first is open; the other seven are **sealed** — no title, no
+   brief, nothing to spoil.
+2. The open file names the **kind of building** its evidence is in — *Search the Sheriff Post*, *Search the
+   Freight Depot*. It does not say which one. The panel on the right tells you which kinds to look for and
+   gives a bearing to the nearest one you have already charted; the map (M) rings and names the ones you have.
+3. Walk in, press `E` on the crates, and read what is there. Reading a clue establishes a **fact** — a
+   claim, not a topic. *"The plant was shut down by hand at 04:12."*
 4. In the **Evidence** tab, select two known facts and press **ASSEMBLE DEDUCTION**. If the
    pair genuinely implies something, you get a new fact and a note explaining why.
 5. When you hold the facts a case needs, the case page offers **FILE CONCLUSION**. Close it
-   and you take the case reward, faction standing, and 250 XP.
+   and you take the case reward, faction standing, and 250 XP — and **the Office opens the next file**,
+   whose evidence is now somewhere new in the flats.
 6. Close all eight and the Survey Office has to write its final report.
 
 The deduction chains are acyclic and every fact is reachable, so nothing is unwinnable and
-nothing is given away for free.
+nothing is given away for free. Evidence is never placed in a crate you have already emptied, so a
+file can never become impossible to close.
 
 ## Layout
 
@@ -340,6 +347,7 @@ serve.bat        LAN server launcher for couch play
 serve.js         the LAN server itself — sends no-store so a reload always picks up your edits
 src/core.js       seeded RNG, value noise, colour + math helpers, the clock
 src/world.js      biome field, roads, POI placement, clue placement, spawns
+src/caseflow.js   the file order: which case is open, what it needs, what it hands over
 src/interiors.js  the seventeen hand-built rooms, entering, leaving, indoor collision
 src/items.js      75-item catalog
 src/factions.js   3 factions, 11 contracts
@@ -366,6 +374,7 @@ test/smoke.js     headless validation — content graph, 20 world seeds, item-id
 test/gfx.js       headless validation — graphics module contract, biome distinctness, hillshade
 test/live.js      headless validation — the living layer end to end, ghost ids, no-crash paths
 test/interiors.js headless validation — the rooms are enterable, connected, and collision holds
+test/cases.js    headless validation — the search loop: one file at a time, and the handover
 ```
 
 ## Testing
@@ -375,10 +384,21 @@ node test/smoke.js
 node test/gfx.js
 node test/live.js
 node test/interiors.js
+node test/weapons.js
+node test/cases.js
 ```
 
+`cases.js` validates **the search loop**, because it is the one system in the game that cannot be
+checked by looking at the data. It asserts that a clue you have not found is not on either map, that
+the journal names the *kind* of building and never the raw data key, that every building says what
+it is, that only the open file has anything in the world at all, that closing a file opens the next
+one and puts its evidence in the flats, that **evidence is never placed in a crate you have already
+emptied** (a file that cannot be closed is a dead end), that a reloaded world puts the evidence back
+in exactly the same crates, and that every piece of evidence sits inside the building the journal
+names. Exits non-zero on any failure.
+
 `smoke.js` validates the item catalog, the deduction graph (acyclicity, reachability, every solution
-derivable), clue placement into containers, that **20 different seeds** all place every clue and
+derivable), clue placement into containers, that **20 different seeds** all place the open file and
 every POI type, and that **every item id the game hands the player actually exists** — starting
 kit, crafting recipes, contract requirements and case rewards all resolve to real catalog items.
 That last check exists because a ghost item id is invisible in the inventory, does nothing when

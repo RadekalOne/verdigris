@@ -240,15 +240,49 @@ window.VG = window.VG || {};
         fh.style.display = 'none';
       }
     }
+    /* the file the Office is working, and the kind of building it needs.
+       This is the search loop in one card: it names the kind of place to
+       walk to, and gives a bearing to the nearest one you have charted. A
+       lead the player cannot act on is not a lead, and a building the
+       Office has not charted is not a place to point at - that is the
+       exploring the player came for. */
+    let caseShown = false;
+    const caseHint = document.getElementById('casehint');
+    if (caseHint) {
+      const want = VG.wantedTypes(p);
+      if (!want.length) {
+        caseHint.style.display = 'none';
+      } else {
+        caseShown = true;
+        caseHint.style.display = 'block';
+        const names = want.map((k) => VG.poiTypeName(k));
+        let best = null, bd = Infinity;
+        for (const poi of world.pois) {
+          if (!poi.discovered) continue;
+          if (want.indexOf(poi.type) < 0) continue;
+          const d = VG.dist(p.x, p.y, poi.x * VG.TILE, poi.y * VG.TILE);
+          if (d < bd) { bd = d; best = poi; }
+        }
+        if (best) {
+          const dx = best.x * VG.TILE - p.x, dy = best.y * VG.TILE - p.y;
+          caseHint.innerHTML = '<div class="t">' + VG.htmlEscape(VG.poiTypeName(best.type)) + ' · ' +
+            Math.round(bd) + 'm ' + VG.compassDir(dx, dy) + '</div>' +
+            '<div class="d">The file needs a ' + VG.htmlEscape(names.join(', a ')) + '. Go in and search it.</div>';
+        } else {
+          caseHint.innerHTML = '<div class="t">Looking for a ' + VG.htmlEscape(names.join(', a ')) + '</div>' +
+            '<div class="d">The Office has not charted one yet. Keep looking.</div>';
+        }
+      }
+    }
     const hintBox = document.getElementById('hints');
     if (hintBox) {
-      hintBox.style.display = (waterShown || foodShown) ? 'block' : 'none';
+      hintBox.style.display = (waterShown || foodShown || caseShown) ? 'block' : 'none';
       /* The threat card sits under the hints, and the hints grow and shrink
          with what they have to say. Two of them at once pushes the card
          down, so the card below has to follow. */
       const threat = document.getElementById('threat');
       if (threat) {
-        const h = (waterShown || foodShown) ? (hintBox.offsetHeight || 44) : 0;
+        const h = (waterShown || foodShown || caseShown) ? (hintBox.offsetHeight || 44) : 0;
         threat.style.top = Math.round(276 + h + 8) + 'px';
       }
     }
@@ -335,11 +369,12 @@ window.VG = window.VG || {};
       g.fillStyle = poi.tier >= 2 ? '#e8b34a' : '#8a8578';
       g.fillRect(poi.x * k - 1, poi.y * k - 1, 2.5, 2.5);
     }
-    // clues: only the ones actually recovered read as cyan. The rest are
-    // faint, the way the Office manifest marks a location it has not visited.
-    for (const cl of world.clues) {
-      const known = (VG.Player.readClues || {})[cl.id];
-      g.fillStyle = known ? '#7fc4d8' : 'rgba(232,179,74,.30)';
+    // clues: only the ones actually recovered read as cyan. A clue that has
+    // not been found is not marked at all - it is a place to look for, and
+    // marking all forty-seven of them hands the player the whole mystery
+    // before they have taken a step.
+    for (const cl of VG.visibleClues(world, VG.Player)) {
+      g.fillStyle = '#7fc4d8';
       g.fillRect(cl.x * k - 1.5, cl.y * k - 1.5, 3, 3);
     }
     // live events — calls, raids, convoys. Marker coordinates are world
@@ -434,8 +469,11 @@ window.VG = window.VG || {};
               h += '<div class="cardx" style="margin-bottom:6px"><h3>' + VG.htmlEscape(cl.name) + '</h3><p class="pre">' +
                 VG.htmlEscape(cl.text) + '</p><div class="meta">' + cl.type + '</div></div>';
             } else {
+              /* the lead names the KIND of building. It used to print the
+                 raw data key ("search the police"), which is a note to the
+                 programmer, not a direction a player can walk in. */
               h += '<div class="cardx" style="margin-bottom:6px;opacity:.45"><h3>— not yet located —</h3>' +
-                '<p class="muted">Search the ' + VG.htmlEscape(cl.poi || 'flats') + ' for this one.</p></div>';
+                '<p class="muted">' + VG.htmlEscape(VG.clueLead(cl)) + '</p></div>';
             }
           }
           const facts = (c.facts || []).filter((f) => p.knownFacts[f.id]);
@@ -467,7 +505,17 @@ window.VG = window.VG || {};
         const found = (p.foundClues[c.id] || []).length;
         const total = (c.clues || []).length;
         const done = (p.solvedSolutions[c.id] || []).length;
-        const st = done > 0 ? '<span class="tag on">closed</span>' : (found > 0 ? '<span class="tag">open</span>' : '<span class="tag">unopened</span>');
+        const closed = done > 0;
+        /* The Office works one file at a time. A file that has not been
+           opened is sealed: it is listed so the player knows the survey has
+           more than one chapter, but its title and its brief are not shown,
+           because the point of a mystery is not knowing what is coming. */
+        if (!closed && !VG.caseIsOpen(c, p)) {
+          h += '<div class="listitem"><div class="n">— sealed — <span class="tag">chapter ' + c.chapter + '</span></div>' +
+            '<div class="d">The Office opens one file at a time. Close the file you are working and this one is unsealed.</div></div>';
+          continue;
+        }
+        const st = closed ? '<span class="tag on">closed</span>' : (found > 0 ? '<span class="tag">open</span>' : '<span class="tag">unopened</span>');
         h += '<div class="listitem" data-case="' + c.id + '"><div class="n">' + VG.htmlEscape(c.title) + ' ' + st + '</div>' +
           '<div class="d">Case file · chapter ' + c.chapter + ' · evidence ' + found + '/' + total + ' · conclusions ' + done + '/' + (c.solutions || []).length + '</div></div>';
       }
@@ -588,6 +636,10 @@ window.VG = window.VG || {};
       for (let x = 0; x < w.W; x++) if (w.isRoad(x, y)) g.fillRect(x * k, y * k, k + 1, k + 1);
     }
     const p = VG.Player;
+    /* the kind of building the open file is looking for. The map cannot
+       point at the evidence - that is the whole point - but it can say what
+       kind of place to walk to. */
+    const wanted = VG.wantedTypes(p);
     for (const poi of w.pois) {
       /* water is public infrastructure — the Survey Office map knows where the
          wells and the towers are, so they are on the map from the start */
@@ -606,12 +658,25 @@ window.VG = window.VG || {};
         g.strokeStyle = 'rgba(232,179,74,.5)'; g.lineWidth = 1;
         g.strokeRect(poi.x * k - 4, poi.y * k - 4, 9, 9);
       }
+      /* a building of the kind the file needs is ringed and named. The map
+         is the only place a player can look for something, so it has to
+         answer the question the journal asks. */
+      if (wanted.indexOf(poi.type) >= 0) {
+        g.strokeStyle = '#e8b34a'; g.lineWidth = 1;
+        g.strokeRect(poi.x * k - 4.5, poi.y * k - 4.5, 10, 10);
+        const label = poi.typeName || VG.poiTypeName(poi.type);
+        g.font = '9px sans-serif';
+        g.textAlign = 'left';
+        g.textBaseline = 'middle';
+        g.lineWidth = 3; g.strokeStyle = '#0d100c';
+        g.strokeText(label, poi.x * k + 7, poi.y * k);
+        g.fillStyle = '#e8b34a';
+        g.fillText(label, poi.x * k + 7, poi.y * k);
+      }
     }
-    for (const cl of w.clues) {
-      const cse = VG.allCases().find((x) => x.id === cl.caseId);
-      if (!cse) continue;
-      const known = (VG.Player.readClues || {})[cl.id];
-      g.fillStyle = known ? '#7fc4d8' : 'rgba(232,179,74,.32)';
+    /* the clues that have been read. The rest are not on the map. */
+    for (const cl of VG.visibleClues(w, p)) {
+      g.fillStyle = '#7fc4d8';
       g.beginPath(); g.arc(cl.x * k, cl.y * k, 3.4, 0, VG.TAU); g.fill();
     }
     /* live events. A call you cannot find is a call you cannot answer. */
@@ -636,9 +701,11 @@ window.VG = window.VG || {};
     g.strokeStyle = '#e8b34a'; g.lineWidth = 1.5; g.stroke();
     const sub = $('#map-sub');
     if (sub) {
+      const wantNames = wanted.map((k) => VG.poiTypeName(k));
       sub.textContent = inRoom
         ? 'Inside ' + VG.INT.active.tpl.title
-        : 'Surveyed ' + Math.round(p.x / VG.TILE) + ', ' + Math.round(p.y / VG.TILE);
+        : 'Surveyed ' + Math.round(p.x / VG.TILE) + ', ' + Math.round(p.y / VG.TILE) +
+          (wantNames.length ? ' · looking for ' + wantNames.join(', ') : '');
     }
   };
 

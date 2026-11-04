@@ -287,6 +287,17 @@ window.VG = window.VG || {};
         'headed. The keys are measured against your facing and not against the screen, so there is only ever ' +
         'one direction to learn.</p>';
 
+      /* the survey loop, in words. This is the game: one file at a time, and
+         the evidence is somewhere rather than marked. */
+      h += '<h3 style="color:var(--amber);font-size:12px;letter-spacing:.08em;margin:14px 0 6px">The files</h3>';
+      h += '<p class="muted" style="font-size:11px;line-height:1.6;margin:0 0 8px">' +
+        'The Survey Office works one file at a time. The journal (J) names the kind of building the open file ' +
+        'needs - a Sheriff Post, a Diner, a Freight Depot - and it does not mark where that building is, because ' +
+        'nobody has charted it yet. The panel on the right tells you which kinds to look for and gives you a ' +
+        'bearing to the nearest one you have already charted; the map (M) rings and names the ones you have. ' +
+        'Go in, press E on the crates, and read what is there. Find the evidence, assemble the deductions, and ' +
+        'close the file - and closing it opens the next one, which is somewhere new.</p>';
+
       /* the checklist */
       h += '<h3 style="color:var(--amber);font-size:12px;letter-spacing:.08em;margin:16px 0 6px">Getting started</h3>';
       h += '<p class="muted" style="font-size:11px;line-height:1.6;margin:0 0 8px">' + VG.htmlEscape(HOW) + '</p>';

@@ -114,6 +114,11 @@ window.VG = window.VG || {};
         e.maxhp = e.hp;
       }
       VG.Player = p;
+      /* the files that were opened before the save have to be back in the
+         world before the player goes looking for them. This runs after the
+         opened crates are restored, because a crate the player already
+         emptied is not a crate the evidence can go back into. */
+      if (VG.rebuildOpenClues) VG.rebuildOpenClues(VG.World, p);
       /* the living-flats state is applied after VG.DYN.init, which resets it */
       VG.loadedDyn = d.dyn || null;
       return p;

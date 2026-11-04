@@ -41,7 +41,7 @@ const ok = (cond, msg) => { if (!cond) { console.log('  FAIL ' + msg); fail++; }
 
 console.log('== loading modules ==');
 ['src/core.js', 'src/items.js', 'src/factions.js', 'src/cases.js', 'src/cases_b.js',
- 'src/world.js', 'src/loot.js', 'src/player.js', 'src/save.js', 'src/audio.js', 'src/help.js',
+ 'src/world.js', 'src/caseflow.js', 'src/loot.js', 'src/player.js', 'src/save.js', 'src/audio.js', 'src/help.js',
  'src/ui.js', 'src/main.js'].forEach((f) => {
   const loaded = load(f);
   if (!loaded) fail++;
@@ -173,7 +173,12 @@ const types = new Set(w.pois.map((p) => p.type));
 let missingType = [];
 for (const t of VG.POI_TYPES) if (!types.has(t.key)) missingType.push(t.key);
 ok(missingType.length === 0, 'every POI type present' + (missingType.length ? ' MISSING ' + missingType.join(',') : ''));
-ok(w.clues.length === totalClues, 'all ' + w.clues.length + ' clues placed into containers');
+/* The Office works one file at a time, so the world carries the evidence of
+   the open file and nothing else. The other seven are filed away until
+   their turn comes - that is what makes a case a hunt. */
+const OPEN = cases[0];
+ok(w.clues.length === OPEN.clues.length,
+  'only the open file is in the world (' + w.clues.length + ' clues, ' + OPEN.clues.length + ' wanted)');
 const clueInst = new Set(w.clues.map((cl) => cl.id));
 ok(clueInst.size === w.clues.length, 'no duplicated clue placements');
 const clueCons = new Set(w.clues.map((cl) => cl.container));
@@ -183,7 +188,7 @@ ok(contWithClue === w.clues.length, 'every clue container holds exactly one clue
 const clueNoC = w.clues.filter((cl) => !cl.caseId);
 ok(clueNoC.length === 0, 'every placed clue has a case');
 const wCases = new Set(w.clues.map((cl) => cl.caseId));
-ok(wCases.size === cases.length, 'all 8 cases have at least one placed clue (' + wCases.size + ')');
+ok(wCases.size === 1 && wCases.has(OPEN.id), 'every placed clue belongs to the open file (' + wCases.size + ' files)');
 ok(w.enemies.length > 80, 'enemies ' + w.enemies.length);
 ok(w.start && w.start.x > 0, 'start position set ' + JSON.stringify(w.start));
 
@@ -337,10 +342,10 @@ let seedFail = 0;
 for (let s = 1; s <= 20; s++) {
   const ww = VG.genWorld(s * 7919);
   const ty = new Set(ww.pois.map((x) => x.type));
-  if (ww.clues.length !== totalClues) { console.log('  seed ' + s + ' placed ' + ww.clues.length + '/' + totalClues + ' clues'); seedFail++; }
+  if (ww.clues.length !== OPEN.clues.length) { console.log('  seed ' + s + ' placed ' + ww.clues.length + '/' + OPEN.clues.length + ' clues'); seedFail++; }
   for (const t of VG.POI_TYPES) if (!ty.has(t.key)) { console.log('  seed ' + s + ' missing ' + t.key); seedFail++; }
 }
-ok(seedFail === 0, 'all 20 seeds place every clue and POI type');
+ok(seedFail === 0, 'all 20 seeds place the open file and every POI type');
 
 console.log('\n== the combat graph ==');
 /* A weapon tag the engine ignores is a promise the game does not keep. The

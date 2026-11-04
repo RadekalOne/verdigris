@@ -193,7 +193,11 @@ window.VG = window.VG || {};
   };
 
   /* ---------- conclusions ---------- */
+  /* Only the file the Office is working can be closed. The files after it
+     are sealed: their evidence is not in the world, and a conclusion filed
+     on a sealed file would be a conclusion the Office never agreed to. */
   VG.canConclude = function (cse, p) {
+    if (!VG.caseIsOpen(cse, p)) return null;
     for (const s of (cse.solutions || [])) {
       if ((p.solvedSolutions[cse.id] || []).indexOf(s.id) >= 0) continue;
       if ((s.requires || []).every((r) => p.knownFacts[r])) return s;
@@ -202,6 +206,10 @@ window.VG = window.VG || {};
   };
   VG.conclude = function (cse, s) {
     const p = VG.Player;
+    if (!VG.caseIsOpen(cse, p)) {
+      VG.log('That file is not open.', 'bad');
+      return;
+    }
     p.solvedSolutions[cse.id] = p.solvedSolutions[cse.id] || [];
     p.solvedSolutions[cse.id].push(s.id);
     p.xp += 250;
@@ -219,6 +227,20 @@ window.VG = window.VG || {};
       for (const it of (cse.reward.items || [])) VG.invAdd(p, it, 1);
     }
     VG.log(s.epilogue || '', 'clue');
+    /* the closed file hands over the next one. The epilogue already says
+       what comes next in the prose; this makes the engine agree with it -
+       the next file opens and its evidence goes out into the flats, where
+       it has to be found. */
+    const next = VG.openCase(p);
+    if (next && VG.World) {
+      VG.placeClues(VG.World, next);
+      if (VG.INT) VG.INT.prepare(VG.World);
+      VG.log('FILE OPENED: ' + next.title, 'clue');
+      const want = VG.caseWantedTypes(next, p).map((k) => VG.poiTypeName(k));
+      if (want.length) {
+        VG.log('The file needs a ' + want.join(', a ') + '. Go in and search it.', '');
+      }
+    }
     const all = VG.allCases();
     const closed = all.filter((c) => (p.solvedSolutions[c.id] || []).length).length;
     if (closed === all.length) VG.showEndgame();

@@ -54,6 +54,27 @@ window.VG = window.VG || {};
   const POI_BY_KEY = {};
   VG.POI_TYPES.forEach((p) => { POI_BY_KEY[p.key] = p; });
 
+  /* The name of a kind of building. This is the word the player searches
+     for, so it has to be the word on the building as well. */
+  VG.poiTypeName = function (key) {
+    const t = POI_BY_KEY[key];
+    if (t) return t.name;
+    const s = String(key || 'flats');
+    return s.replace(/_/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); });
+  };
+
+  /* A building's name with its kind spelled out: "Bellows Lane - Sheriff
+     Post". The kind is what the player can act on, and a building that does
+     not say what it is is a building the player cannot look for. */
+  VG.poiLabel = function (proper, typeKey) {
+    const t = VG.poiTypeName(typeKey);
+    const p = String(proper || '').trim();
+    if (!p) return t;
+    if (!t) return p;
+    if (p.toLowerCase().indexOf(t.toLowerCase()) >= 0) return p;
+    return p + ' — ' + t;
+  };
+
   /* which POI types suit which biome */
   const AFFINITY = {
     town:     ['house', 'shop', 'diner', 'market', 'chapel', 'clinic', 'school', 'hotel', 'bank', 'library', 'police', 'theater', 'garage', 'gas', 'mill', 'cannery'],
@@ -68,8 +89,11 @@ window.VG = window.VG || {};
 
   const NAME_A = ['Hollis', 'Vance', 'Teague', 'Meridian', 'Sundown', 'Copper Mesa', 'Cutter', 'Blackwood',
     'Ashgrove', 'Pellam', 'Draycott', 'Ironside', 'Wexley', 'Calder', 'Rennick', 'Lowry'];
-  const NAME_B = ['Depot', 'Supply', 'Store', 'Works', 'Junction', 'Exchange', 'Yard', 'Post', 'Roof',
-    'Exchange Co.', 'Trading', 'Company', 'Station', 'Shed', 'Hall'];
+  /* the wild names deliberately avoid the words the building kinds use - a
+     place called "Hollis Depot" that is also the freight depot reads as a
+     mistake, and the kind is the part the player acts on */
+  const NAME_B = ['Supply', 'Store', 'Works', 'Junction', 'Exchange', 'Roof',
+    'Trading', 'Company', 'Shed', 'Hall'];
   const TOWN_STREET = ['Alkali', 'Copper', 'Sundown', 'Hollis', 'Pellam', 'Cutter', 'Teague', 'Vance', 'Bellows', 'Ironside'];
 
   const B = { // biome keys by index
@@ -160,9 +184,13 @@ window.VG = window.VG || {};
     function addPoi(typeKey, x, y, name, forced) {
       const t = POI_BY_KEY[typeKey];
       const poi = {
-        id: 'p' + (poiId++), type: typeKey, x, y, name: name || (t.name + ' ' + (poiId)),
+        id: 'p' + (poiId++), type: typeKey, x, y, name: '', typeName: t.name,
         tier: t.tier, containers: [], radius: 30 + t.tier * 12, discovered: false
       };
+      /* the kind is part of the name, so the compass, the door prompt and
+         the survey line all say what the building is without any of them
+         having to ask */
+      poi.name = VG.poiLabel(name || (t.name + ' ' + poiId), typeKey);
       pois.push(poi);
       return poi;
     }
@@ -170,8 +198,7 @@ window.VG = window.VG || {};
     function poiName(rng2, townish) {
       if (townish) {
         const s = rng2.pick(TOWN_STREET);
-        return s + ' ' + rng2.pick(['St.', 'Ave.', 'Row', 'Lane']) + ' — ' +
-          rng2.pick(['Residence', 'Storefront', 'Garage', 'Diner', 'Clinic', 'Rooms', 'Supply', 'Shop']);
+        return s + ' ' + rng2.pick(['St.', 'Ave.', 'Row', 'Lane']);
       }
       return rng2.pick(NAME_A) + ' ' + rng2.pick(NAME_B);
     }
@@ -333,36 +360,6 @@ window.VG = window.VG || {};
       }
     }
 
-    /* ---- place case clues into matching POIs ---- */
-    const allCases = (VG.CASES || []).concat(VG.CASES_B || []);
-    const clues = [];
-    const hasFree = (p) => p.containers.some((ci) => containers[ci] && !containers[ci].clueId);
-    for (const c of allCases) {
-      for (const cl of (c.clues || [])) {
-        let p = null;
-        const exact = pois.filter((q) => q.type === cl.poi && hasFree(q));
-        if (exact.length) p = rng.pick(exact);
-        if (!p) {
-          const alt = pois.filter((q) => hasFree(q));
-          if (alt.length) p = rng.pick(alt);
-        }
-        if (!p) {
-          /* nothing free anywhere: mint a container on a POI of the right type */
-          const host = pois.filter((q) => q.type === cl.poi);
-          const hp = host.length ? rng.pick(host) : (pois.length ? rng.pick(pois) : null);
-          if (!hp) continue;
-          containers.push({ id: 'c' + containers.length, x: hp.x, y: hp.y, poi: hp.id, tier: hp.tier, opened: false, loot: null, name: null, clueId: cl.id });
-          hp.containers.push(containers.length - 1);
-          clues.push({ id: cl.id, caseId: c.id, x: hp.x, y: hp.y, container: containers.length - 1 });
-          continue;
-        }
-        const ci = p.containers.find((i) => containers[i] && !containers[i].clueId);
-        containers[ci].clueId = cl.id;
-        containers[ci].name = cl.name;
-        clues.push({ id: cl.id, caseId: c.id, x: containers[ci].x, y: containers[ci].y, container: ci });
-      }
-    }
-
     /* ---- enemies in the wild ---- */
     const enemies = [];
     for (let i = 0; i < 130; i++) {
@@ -380,7 +377,7 @@ window.VG = window.VG || {};
     }
 
     const world = {
-      seed, W, H, TILE, biome, elev, road, pois, containers, clues, enemies,
+      seed, W, H, TILE, biome, elev, road, pois, containers, clues: [], enemies,
       town, yard, mine, lake, start,
       idx, inb,
       biomeAt: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? B.scrub : biome[y * W + x]),
@@ -388,6 +385,89 @@ window.VG = window.VG || {};
       poiById: (id) => pois.find((p) => p.id === id)
     };
     VG.World = world;
+    /* ---- the open file's evidence ----
+       Only the file the Office is working has anything in the world. The
+       rest is filed away until its turn comes, and that is what makes a
+       case a hunt instead of a checklist. */
+    const first = VG.allCases()[0];
+    if (first) VG.placeClues(world, first);
     return world;
+  };
+
+  /* ---------------------------------------------------------------- */
+  /* evidence placement
+     ---------------------------------------------------------------- */
+
+  /* A file's evidence goes into the buildings of the kind the journal
+     names. The placement has to be reproducible - a save file stores the
+     seed and rebuilds the world from it - so each file gets its own
+     stream, derived from the world seed and the file's name. */
+  VG.caseRng = function (world, cse) {
+    let h = 2166136261;
+    const s = String((cse && cse.id) || 'case');
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return VG.makeRng((((world && world.seed) || 0) ^ h) >>> 0);
+  };
+
+  /* Put one file's evidence into the world.
+
+     Two rules the search loop depends on. The building has to be of the
+     kind the journal names, or the journal is lying about where to look -
+     so when no crate is free, a crate is minted in a building of the right
+     kind rather than the evidence being dropped somewhere the file does
+     not point to. And a clue is never placed in a crate the player has
+     already emptied, because that would make the file impossible to close,
+     and a file that cannot be closed is a dead end in the middle of a
+     survey. */
+  VG.placeClues = function (world, cse) {
+    if (!world || !cse) return [];
+    const pois = world.pois, containers = world.containers;
+    const rng = VG.caseRng(world, cse);
+    const placed = [];
+    const freeOf = (p) => {
+      const out = [];
+      for (let i = 0; i < p.containers.length; i++) {
+        const c = containers[p.containers[i]];
+        /* the world container index, not the position in this building's
+           list - the two are not the same thing, and using the position
+           put two pieces of evidence in one crate */
+        if (c && !c.clueId && !c.opened) out.push(p.containers[i]);
+      }
+      return out;
+    };
+    for (const cl of (cse.clues || [])) {
+      const kind = pois.filter((q) => q.type === cl.poi);
+      let host = null, slot = -1;
+      const kindFree = kind.filter((q) => freeOf(q).length);
+      if (kindFree.length) {
+        host = rng.pick(kindFree);
+        slot = rng.pick(freeOf(host));
+      } else if (kind.length) {
+        /* no crate left in a building of the right kind: put one there */
+        host = rng.pick(kind);
+      } else {
+        const alt = pois.filter((q) => freeOf(q).length);
+        if (alt.length) {
+          host = rng.pick(alt);
+          slot = rng.pick(freeOf(host));
+        } else if (pois.length) {
+          host = rng.pick(pois);
+        }
+      }
+      if (!host) continue;
+      if (slot < 0) {
+        containers.push({
+          id: 'c' + containers.length, x: host.x, y: host.y, poi: host.id, tier: host.tier,
+          opened: false, loot: null, name: null, clueId: cl.id
+        });
+        slot = containers.length - 1;
+        host.containers.push(slot);
+      }
+      containers[slot].clueId = cl.id;
+      containers[slot].name = cl.name;
+      world.clues.push({ id: cl.id, caseId: cse.id, x: host.x, y: host.y, container: slot });
+      placed.push(cl.id);
+    }
+    return placed;
   };
 })(window.VG);

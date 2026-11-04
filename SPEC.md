@@ -74,7 +74,7 @@ VG.CASES = [ /* see shape below */ ];
 {
   id: 'case_torque',
   title: 'The Torque Anomaly',
-  chapter: 1,                  // 1..4, used for gating
+  chapter: 1,                  // 1..4 — a label the Journal prints; the engine gates by file order
   brief: 'Two paragraphs. What the Survey Office believes happened and what is unexplained.',
   clues: [
     {
@@ -164,9 +164,10 @@ Rules:
 ## Engine contract (what your data is allowed to assume)
 
 - The engine reads `VG.ITEMS`, `VG.CASES`, `VG.FACTIONS`, `VG.QUESTS`, `VG.RARITY`, `VG.RARITY_COLOR`.
-- The engine places every clue at a POI of the matching `poi` type inside its case's `chapter` region of the world.
+- The engine works **one file at a time**, in the order the cases appear in the data. Only the open file's evidence is in the world at all; closing a file opens the next one and puts its evidence into the flats.
+- The engine places each clue at a POI of the matching `poi` type, inside that building's room. The building is never marked on the map until the player has charted it.
 - The engine surfaces `cases[].facts` in the Journal as **Evidence** (facts the player knows), `cases[].deductions` as **Deductions** the player can assemble by picking two known facts, and `cases[].solutions` as **Conclusions** (multi-fact).
 - Nothing in the engine mutates your objects except `reward.rep` values.
-- Do not reference `chapter` for gating logic — the engine handles chapter unlocks.
+- Do not reference `chapter` for gating logic — the engine handles the file order and the chapter unlocks. `chapter` is a label the Journal prints.
 
 **Output style:** plain ES5-compatible JS, `var`/`const` is fine, 2-space indent, one trailing newline, no comments longer than one line. Total file size under 60 KB each.

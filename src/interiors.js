@@ -559,7 +559,13 @@ window.VG = window.VG || {};
 
   /* Move a building's crates inside it. A crate in the yard becomes a crate
      on the counter, and the clue it carries is now somewhere you have to
-     walk into a building to reach. */
+     walk into a building to reach.
+
+     A crate can arrive after the room was already prepared - a file that
+     opens puts its evidence into a building, and sometimes that means a
+     new crate in a room that is already furnished. The slots the building
+     has already used are remembered, so the new crate lands somewhere of
+     its own instead of on top of one that is already there. */
   INT.prepare = function (world) {
     if (!world || !world.pois) return 0;
     let moved = 0;
@@ -568,21 +574,43 @@ window.VG = window.VG || {};
       const tpl = BY_KEY[poi.type];
       if (!tpl) continue;
       const slots = tpl.loot;
+      const used = {};
+      for (let j = 0; j < poi.containers.length; j++) {
+        const c = world.containers[poi.containers[j]];
+        if (c && c.inside) used[c.ix + ':' + c.iy] = 1;
+      }
       let n = 0;
       for (let j = 0; j < poi.containers.length; j++) {
         const c = world.containers[poi.containers[j]];
         if (!c || c.inside) continue;
-        const slot = slots[n % slots.length];
-        const round = Math.floor(n / slots.length);
-        c.inside = poi.id;
-        c.ix = slot[0] + (round ? round * 20 : 0);
-        c.iy = slot[1] + (round ? round * 16 : 0);
-        /* the world position now points at the building itself, so a clue
-           marker on the map lands on the door and not in the dust */
-        c.x = poi.x;
-        c.y = poi.y;
-        n++;
-        moved++;
+        let done = false;
+        for (let tries = 0; tries < slots.length * 4 && !done; tries++) {
+          const k = n + tries;
+          const slot = slots[k % slots.length];
+          const round = Math.floor(k / slots.length);
+          const ix = slot[0] + (round ? round * 20 : 0);
+          const iy = slot[1] + (round ? round * 16 : 0);
+          if (used[ix + ':' + iy]) continue;
+          used[ix + ':' + iy] = 1;
+          c.inside = poi.id;
+          c.ix = ix;
+          c.iy = iy;
+          /* the world position now points at the building itself, so a clue
+             marker on the map lands on the door and not in the dust */
+          c.x = poi.x;
+          c.y = poi.y;
+          n = k + 1;
+          done = true;
+          moved++;
+        }
+        if (!done) {
+          c.inside = poi.id;
+          c.ix = slots[0][0];
+          c.iy = slots[0][1];
+          c.x = poi.x;
+          c.y = poi.y;
+          moved++;
+        }
       }
       /* clue map markers follow their crate into the building */
       for (let k = 0; k < world.clues.length; k++) {
