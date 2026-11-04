@@ -53,7 +53,7 @@ itself.
 | **World** | 288 × 288 tiles of procedurally generated high desert: salt flats, dunes, scrub, a company town, an industrial belt, a reactor yard, a dry lake. Roads, street grids, ~74 structures, ~180 searchable containers. Every seed spawns you beside a field camp with company within a few tiles. |
 | **Discovery** | You chart places by walking to them. The map fills in as you go; a POI appears once you are within 260 px. |
 | **Loot** | 75 items across 8 categories and 5 rarities. Containers roll by tier — a bank holds better things than a campfire. **Surprise finds** are flagged separately in the log. |
-| **Mystery** | The core. 8 cases, 47 physical clues, 8–12 established facts per case, and a chain of deductions. **One file is open at a time**: its evidence is not marked on the map, the journal names the *kind* of building it is in, and closing the file opens the next one somewhere new. Read a clue → it establishes a fact. Combine two facts → a deduction yields a new fact. Reach the right facts → you can file a conclusion and close the case. |
+| **Mystery** | The core. 8 cases, 47 physical clues, 8–12 established facts per case, and a chain of deductions. **One file is open at a time**: its evidence is not marked on the map, the journal names the *kind* of building it is in, and closing the file opens the next one somewhere new. The Office asks you questions — you answer with the claim you believe and the evidence for it, and a theory it refuses costs you. Four files carry two readings and you choose which one goes on the file; you can reopen a file later, at a price. |
 | **Factions** | The Ledger (keeps the record true), The Choir (worship the machine), Free Line (want the grid running). Reputation gates contracts and shapes who will deal with you. |
 | **Contracts** | 11 faction contracts, tiered by standing. Turning one in shifts reputation and pays in goods. |
 | **Buildings** | The buildings have insides. Seventeen **hand-built rooms** — one for every kind of building that holds a clue — and every building of those kinds on the flats can be entered: a diner, a substation, a bank, a bunker, the control building at Copper Mesa, a sheriff post, a clinic, a school, the market hall. Walk up to a marked threshold and press `E`. Inside there is a floor, walls you cannot walk through, furniture, a torch that still works, and **the crates that used to sit in the yard**. The clue you are chasing is in the room that describes it. |
@@ -327,12 +327,22 @@ building is the right one is to go and look.
    gives a bearing to the nearest one you have already charted; the map (M) rings and names the ones you have.
 3. Walk in, press `E` on the crates, and read what is there. Reading a clue establishes a **fact** — a
    claim, not a topic. *"The plant was shut down by hand at 04:12."*
-4. In the **Evidence** tab, select two known facts and press **ASSEMBLE DEDUCTION**. If the
-   pair genuinely implies something, you get a new fact and a note explaining why.
-5. When you hold the facts a case needs, the case page offers **FILE CONCLUSION**. Close it
-   and you take the case reward, faction standing, and 250 XP — and **the Office opens the next file**,
-   whose evidence is now somewhere new in the flats.
-6. Close all eight and the Survey Office has to write its final report.
+4. The **Questions** tab is where the Office asks you to answer for it. Each question is one of the
+   file's deductions: *"Why was the maintenance stub cut away with a blade?"* You pick the claim you
+   believe and the evidence you are citing for it, and press **ANSWER THE OFFICE**. The right answer
+   with the right evidence establishes a new fact and the Office gives you its reasoning. A theory it
+   does not accept is written into the file, and the first mistake on a question costs a point of
+   standing with the Ledger.
+5. When you hold the facts a file needs, the file page offers the **findings it can carry**. Four of
+   the eight files carry two readings — *Verdigris was sealed, not evacuated* against *Someone is
+   keeping the relay alive on purpose* — and you choose which one goes on the file. The engine used
+   to take the first conclusion the evidence happened to support, which meant the ending was decided
+   by the order the data was written in.
+6. You can **reopen** a file you have closed, if you later hold the evidence for the other reading. It
+   costs 2 points of standing with the Ledger, the reading you are withdrawing is struck out, and the
+   file carries your amended conclusion into the ending.
+7. Close all eight and the Survey Office has to write its final report — which lists the conclusion
+   *you* filed on each file, and the standing your choices bought.
 
 The deduction chains are acyclic and every fact is reachable, so nothing is unwinnable and
 nothing is given away for free. Evidence is never placed in a crate you have already emptied, so a
@@ -347,6 +357,7 @@ serve.bat        LAN server launcher for couch play
 serve.js         the LAN server itself — sends no-store so a reload always picks up your edits
 src/core.js       seeded RNG, value noise, colour + math helpers, the clock
 src/world.js      biome field, roads, POI placement, clue placement, spawns
+src/case_questions.js the question the Office asks about each deduction
 src/caseflow.js   the file order: which case is open, what it needs, what it hands over
 src/interiors.js  the seventeen hand-built rooms, entering, leaving, indoor collision
 src/items.js      75-item catalog

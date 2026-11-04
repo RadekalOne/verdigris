@@ -3,7 +3,7 @@ window.VG = window.VG || {};
 (function (VG) {
   'use strict';
 
-  let selFacts = [];
+  let qState = {};               // deductionId -> { answer, evidence: [] }
   let invTab = 'gear';
   let jrTab = 'cases';
   let openCase = null;
@@ -483,20 +483,68 @@ window.VG = window.VG || {};
             h += '<div class="kv"><span style="color:#d6d1c3">' + VG.htmlEscape(f.label) + '</span></div>';
           }
           const sol = VG.canConclude(c, p);
-          if (sol) {
-            h += '<div style="height:12px"></div><div class="btn prim" id="btn-conclude">FILE CONCLUSION</div>' +
-              '<p class="muted" style="margin-top:6px">You have the evidence to close this file.</p>';
+          /* ---- the conclusions you can put on the file ----
+             A file with more than one conclusion is a fork: the player is
+             the one who decides which reading goes on it. The engine used
+             to take the first conclusion the evidence happened to support
+             and file that, which meant the ending was decided by the
+             order the data was written in. */
+          const opts = VG.conclusionOptions(c, p);
+          const filedId = VG.filedConclusion(c, p);
+          const filedSol = (c.solutions || []).find((x) => x.id === filedId);
+          const fork = (c.solutions || []).length > 1;
+          if (filedSol) {
+            h += '<h3 style="color:#93b45a;font-size:11px;letter-spacing:.12em;margin:14px 0 5px">ON THE FILE</h3>';
+            h += '<div class="cardx" style="border-color:#5d7a3a"><h3 style="color:#93b45a">' +
+              VG.htmlEscape(filedSol.label) + '</h3><p class="pre">' + VG.htmlEscape(filedSol.epilogue || '') + '</p></div>';
+            /* an investigator who does not like their own conclusion may
+               reopen the file. It costs, and the reading being withdrawn is
+               struck out along with the standing it bought. */
+            const amendable = opts.filter((o) => o.ready && !o.filed);
+            if (amendable.length) {
+              h += '<h3 style="color:#e8b34a;font-size:11px;letter-spacing:.12em;margin:14px 0 5px">REOPEN THE FILE</h3>';
+              h += '<p class="muted" style="margin-bottom:6px">The Office has the evidence for another reading. Reopening the file costs ' +
+                VG.AMEND_COST + ' points of standing with the Ledger, and the reading you are withdrawing is struck out.</p>';
+              for (const o of amendable) {
+                h += '<div class="cardx" style="margin-bottom:8px"><h3>' + VG.htmlEscape(o.sol.label) + '</h3>' +
+                  '<p class="muted">' + VG.htmlEscape(o.requires.map((r) => VG.factLabel(r)).join(' · ')) + '</p>' +
+                  '<div class="btn prim" data-amend="' + o.sol.id + '">REOPEN AND FILE THIS READING</div></div>';
+              }
+            }
+          } else {
+            const showable = opts.filter((o) => o.ready || fork);
+            if (showable.length) {
+              h += '<h3 style="color:#e8b34a;font-size:11px;letter-spacing:.12em;margin:14px 0 5px">THE FINDINGS THIS FILE CAN CARRY</h3>';
+              for (const o of showable) {
+                if (!o.ready) {
+                  h += '<div class="cardx" style="margin-bottom:8px;opacity:.5"><h3>— another reading —</h3>' +
+                    '<p class="muted">The evidence for this one is not yet in your hands.</p></div>';
+                  continue;
+                }
+                h += '<div class="cardx" style="margin-bottom:8px"><h3>' + VG.htmlEscape(o.sol.label) + '</h3>' +
+                  '<p class="muted">Rests on: ' + VG.htmlEscape(o.requires.map((r) => VG.factLabel(r)).join(' · ')) + '</p>' +
+                  '<div class="btn prim" data-file="' + o.sol.id + '">FILE THIS CONCLUSION</div></div>';
+              }
+            } else {
+              h += '<div style="height:12px"></div><p class="muted">You do not yet have the evidence to close this file.</p>';
+            }
           }
-          for (const s of (c.solutions || [])) {
-            if ((p.solvedSolutions[c.id] || []).indexOf(s.id) < 0) continue;
-            h += '<div class="cardx" style="margin-top:10px;border-color:#5d7a3a"><h3 style="color:#93b45a">' +
-              VG.htmlEscape(s.label) + '</h3><p class="pre">' + VG.htmlEscape(s.epilogue || '') + '</p></div>';
+          /* the Office keeps a record of the theories it refused */
+          const refused = (c.deductions || []).filter((d) => (p.rejectedTheories || {})[d.id]);
+          if (refused.length) {
+            const n = refused.reduce((a, d) => a + (p.rejectedTheories[d.id] || 0), 0);
+            h += '<p class="muted" style="margin-top:10px">The file carries ' + n +
+              (n === 1 ? ' rejected theory' : ' rejected theories') + '. The Office does not forget.</p>';
           }
           body.innerHTML = h;
           const back = document.getElementById('jr-back');
           if (back) back.onclick = () => { openCase = null; VG.renderJournal(); };
-          const cb = document.getElementById('btn-conclude');
-          if (cb) cb.onclick = () => { if (sol) VG.conclude(c, sol); };
+          body.querySelectorAll('[data-file]').forEach((e) => {
+            e.onclick = () => { VG.fileConclusion(c, e.getAttribute('data-file'), p); };
+          });
+          body.querySelectorAll('[data-amend]').forEach((e) => {
+            e.onclick = () => { VG.amendConclusion(c, e.getAttribute('data-amend'), p); };
+          });
           return;
         }
       }
@@ -526,31 +574,97 @@ window.VG = window.VG || {};
       return;
     }
     if (jrTab === 'evid') {
-      let h = '<p class="muted" style="margin-bottom:8px">Select two pieces of evidence to assemble a deduction. Selected: ' +
-        (selFacts.length ? selFacts.map((f) => VG.htmlEscape(VG.factLabel(f))).join('  +  ') : 'none') + '</p>' +
-        '<div class="btn prim" id="btn-deduce">ASSEMBLE DEDUCTION</div><div style="height:10px"></div>';
-      for (const c of cases) {
-        const facts = (c.facts || []).filter((f) => p.knownFacts[f.id]);
-        if (!facts.length) continue;
-        h += '<h3 style="color:#e8b34a;font-size:12px;letter-spacing:.1em;margin:12px 0 6px">' + VG.htmlEscape(c.title) + '</h3>';
-        for (const f of facts) {
-          const on = selFacts.indexOf(f.id) >= 0;
-          h += '<div class="listitem' + (on ? ' sel' : '') + '" data-fact="' + f.id + '"><div class="n">' +
-            VG.htmlEscape(f.label) + '</div><div class="d">' + VG.htmlEscape(f.desc || '') + '</div></div>';
+      /* The Office asks a question and the player answers it with the
+         claim they believe and the evidence they are citing for it. It
+         used to be a lock with two keys in it: pick the right pair of facts
+         and the engine handed you the answer, and a player who did not
+         understand the case could still get through by trying pairs. */
+      const open = VG.openCase(p);
+      let h = '';
+      if (!open) {
+        h = '<p class="muted">No file is open. Close the file you are working and the Office opens the next one.</p>';
+      } else {
+        const live = VG.openQuestions(open, p);
+        if (!live.length) {
+          h = '<p class="muted">The Office has no further questions for you. Everything it wanted out of this file, it has.</p>';
+        } else {
+          const d = live[0];
+          if (!qState[d.id]) qState[d.id] = { answer: null, evidence: [] };
+          const st = qState[d.id];
+          const q = VG.questionFor(d.id) || d.label;
+          h += '<div class="cardx" style="border-color:#e8b34a">' +
+            '<h3 style="color:#e8b34a;letter-spacing:.1em">THE OFFICE ASKS</h3>' +
+            '<p style="font-size:13px;line-height:1.6;margin:6px 0 12px">' + VG.htmlEscape(q) + '</p>' +
+            '<div class="meta" style="margin-bottom:4px">YOUR ANSWER</div>';
+          for (const a of VG.caseAnswers(open)) {
+            const on = st.answer === a.id;
+            h += '<div class="listitem' + (on ? ' sel' : '') + '" data-ans="' + a.id + '"><div class="n">' +
+              VG.htmlEscape(a.label) + '</div></div>';
+          }
+          h += '<div class="meta" style="margin:12px 0 4px">THE EVIDENCE YOU ARE CITING</div>';
+          const known = (open.facts || []).filter((f) => p.knownFacts[f.id]);
+          for (const f of known) {
+            const on = st.evidence.indexOf(f.id) >= 0;
+            h += '<div class="listitem' + (on ? ' sel' : '') + '" data-ev="' + f.id + '"><div class="n">' +
+              VG.htmlEscape(f.label) + '</div><div class="d">' + VG.htmlEscape(f.desc || '') + '</div></div>';
+          }
+          h += '<div style="height:10px"></div><div class="btn prim" id="btn-answer">ANSWER THE OFFICE</div>' +
+            '<p class="muted" style="margin-top:6px">A theory the Office does not accept is written into the file. The first one on a question costs a point of standing with the Ledger.</p>';
+          if (live.length > 1) h += '<p class="muted">The Office has ' + live.length + ' questions waiting on this file.</p>';
         }
       }
       body.innerHTML = h;
-      body.querySelectorAll('[data-fact]').forEach((e) => {
+      body.querySelectorAll('[data-ans]').forEach((e) => {
         e.onclick = () => {
-          const id = e.getAttribute('data-fact');
-          const i = selFacts.indexOf(id);
-          if (i >= 0) selFacts.splice(i, 1);
-          else { selFacts.push(id); if (selFacts.length > 3) selFacts.shift(); }
+          const open2 = VG.openCase(p);
+          if (!open2) return;
+          const live = VG.openQuestions(open2, p);
+          if (!live.length) return;
+          const st = qState[live[0].id];
+          st.answer = (st.answer === e.getAttribute('data-ans')) ? null : e.getAttribute('data-ans');
           VG.renderJournal();
         };
       });
-      const btn = document.getElementById('btn-deduce');
-      if (btn) btn.onclick = VG.tryDeduction;
+      body.querySelectorAll('[data-ev]').forEach((e) => {
+        e.onclick = () => {
+          const open2 = VG.openCase(p);
+          if (!open2) return;
+          const live = VG.openQuestions(open2, p);
+          if (!live.length) return;
+          const st = qState[live[0].id];
+          const id = e.getAttribute('data-ev');
+          const i = st.evidence.indexOf(id);
+          if (i >= 0) st.evidence.splice(i, 1); else st.evidence.push(id);
+          VG.renderJournal();
+        };
+      });
+      const btn = document.getElementById('btn-answer');
+      if (btn) {
+        btn.onclick = () => {
+          const open2 = VG.openCase(p);
+          if (!open2) return;
+          const live = VG.openQuestions(open2, p);
+          if (!live.length) return;
+          const d = live[0];
+          const st = qState[d.id];
+          if (!st.answer) { VG.log('Say what you believe first.', 'bad'); return; }
+          if (!st.evidence.length) { VG.log('Cite the evidence for it.', 'bad'); return; }
+          const res = VG.answerQuestion(open2, d.id, st.answer, st.evidence, p);
+          if (!res.ok) {
+            VG.log(res.reason + (res.cost ? ' A point of standing with the Ledger is gone.' : ''), 'bad');
+            if (VG.Audio) VG.Audio.deny();
+            st.evidence = [];
+          } else {
+            VG.log(res.note || res.label || '', 'clue');
+            if (VG.Audio) VG.Audio.deduct();
+            if (VG.Help) VG.Help.mark('deduced');
+            st.answer = null;
+            st.evidence = [];
+            delete qState[d.id];
+          }
+          VG.renderJournal();
+        };
+      }
       return;
     }
     if (jrTab === 'deduct') {
@@ -594,27 +708,12 @@ window.VG = window.VG || {};
     return null;
   };
 
-  VG.tryDeduction = function () {
-    const p = VG.Player;
-    if (selFacts.length < 2) { VG.log('Select two pieces of evidence.', 'bad'); return; }
-    const set = selFacts.slice().sort().join('|');
-    for (const c of VG.allCases()) {
-      for (const d of (c.deductions || [])) {
-        const dset = d.inputs.slice().sort().join('|');
-        if (dset === set) {
-          p.knownFacts[d.output] = c.id;
-          selFacts = [];
-          VG.log('DEDUCTION: ' + d.label, 'clue');
-          if (VG.Audio) VG.Audio.deduct();
-          if (VG.Help) VG.Help.mark('deduced');
-          VG.renderJournal();
-          return;
-        }
-      }
-    }
-    VG.log('The evidence does not support a conclusion.', 'bad');
-    if (VG.Audio) VG.Audio.deny();
-  };
+  /* The old pair-matching lock is gone. A deduction is now a question the
+     Office asks, and the player answers it with a claim and the evidence
+     for it - see VG.answerQuestion in caseflow.js. The engine function
+     that used to live here walked every case looking for a pair of facts
+     that matched a deduction's inputs, and it made the case a filing
+     exercise rather than a mystery. */
 
   /* ================= map ================= */
   VG.renderMap = function () {

@@ -204,11 +204,29 @@ window.VG = window.VG || {};
     }
     return null;
   };
-  VG.conclude = function (cse, s) {
-    const p = VG.Player;
-    if (!VG.caseIsOpen(cse, p)) {
-      VG.log('That file is not open.', 'bad');
-      return;
+
+  /* the standing and the goods a conclusion brings */
+  VG.grantRewards = function (p, s) {
+    if (!s) return;
+    if (s.reward) {
+      for (const k in (s.reward.rep || {})) p.rep[k] = (p.rep[k] || 0) + s.reward.rep[k];
+      for (const it of (s.reward.items || [])) VG.invAdd(p, it, 1);
+    }
+  };
+
+  /* File a conclusion. The player picks the reading that goes on the file.
+     For a file with two conclusions that is a real choice, and it moves
+     faction standing and the ending - the engine does not pick for them
+     any more. */
+  VG.fileConclusion = function (cse, solId, p) {
+    p = p || VG.Player;
+    const s = (cse.solutions || []).find((x) => x.id === solId);
+    if (!s) { VG.log('That conclusion is not on this file.', 'bad'); return false; }
+    if (!VG.caseIsOpen(cse, p)) { VG.log('That file is not open.', 'bad'); return false; }
+    const ready = VG.conclusionOptions(cse, p).filter((o) => o.ready && o.sol.id === solId);
+    if (!ready.length) {
+      VG.log('The evidence does not support that conclusion yet.', 'bad');
+      return false;
     }
     p.solvedSolutions[cse.id] = p.solvedSolutions[cse.id] || [];
     p.solvedSolutions[cse.id].push(s.id);
@@ -218,10 +236,7 @@ window.VG = window.VG || {};
     VG.log('CASE CLOSED: ' + cse.title, 'clue');
     if (VG.Audio) VG.Audio.close();
     if (VG.Help) VG.Help.mark('concluded');
-    if (s.reward) {
-      for (const k in (s.reward.rep || {})) p.rep[k] = (p.rep[k] || 0) + s.reward.rep[k];
-      for (const it of (s.reward.items || [])) VG.invAdd(p, it, 1);
-    }
+    VG.grantRewards(p, s);
     if (cse.reward) {
       for (const k in (cse.reward.rep || {})) p.rep[k] = (p.rep[k] || 0) + cse.reward.rep[k];
       for (const it of (cse.reward.items || [])) VG.invAdd(p, it, 1);
@@ -245,6 +260,48 @@ window.VG = window.VG || {};
     const closed = all.filter((c) => (p.solvedSolutions[c.id] || []).length).length;
     if (closed === all.length) VG.showEndgame();
     VG.renderJournal();
+    return true;
+  };
+
+  /* Reopen a closed file and file a different reading. An investigator who
+     does not like their own conclusion may reopen the file - it costs two
+     points of standing with the Ledger, and the reading being withdrawn is
+     struck from the file along with the standing it bought. */
+  VG.amendConclusion = function (cse, solId, p) {
+    p = p || VG.Player;
+    const s = (cse.solutions || []).find((x) => x.id === solId);
+    if (!s) return false;
+    const current = VG.filedConclusion(cse, p);
+    if (!current || current === solId) return false;
+    const filed = p.solvedSolutions[cse.id] || [];
+    if (filed.indexOf(solId) >= 0) return false;
+    if (!VG.canAmend(cse, p)) return false;
+    const old = (cse.solutions || []).find((x) => x.id === current);
+    if (old && old.reward) {
+      /* the standing the withdrawn reading bought goes back, and so do the
+         goods it paid in - as long as they are still in the pack. */
+      if (old.reward.rep) {
+        for (const k in old.reward.rep) p.rep[k] = (p.rep[k] || 0) - old.reward.rep[k];
+      }
+      for (const it of (old.reward.items || [])) {
+        if (VG.invCount(p, it) > 0) VG.invRemove(p, it, 1);
+      }
+    }
+    p.rep.ledger = (p.rep.ledger || 0) - VG.AMEND_COST;
+    filed.push(solId);
+    p.solvedSolutions[cse.id] = filed;
+    VG.grantRewards(p, s);
+    VG.log('THE FILE IS REOPENED. The earlier reading is struck out.', 'clue');
+    VG.log('Reopening the file cost ' + VG.AMEND_COST + ' points of standing with the Ledger. Standing is now ' + (p.rep.ledger || 0) + '.', '');
+    VG.log(s.epilogue || '', 'clue');
+    VG.renderJournal();
+    return true;
+  };
+
+  /* kept for the old call shape: filing a conclusion the player has picked */
+  VG.conclude = function (cse, s) {
+    if (!s) return false;
+    return VG.fileConclusion(cse, s.id, VG.Player);
   };
   VG.showEndgame = function () {
     const p = VG.Player;
@@ -253,8 +310,22 @@ window.VG = window.VG || {};
       const all = VG.allCases();
       let h = '<p style="color:#d6d1c3;line-height:1.8">Eight files closed. The Survey Office has its answer, and the answer is worse than a missing town.</p><p style="color:#8a8578;line-height:1.8;margin-top:10px">The people of Verdigris Flats are alive. They have been for forty-one years, in a place the maps do not show, because this office decided the world was better off not knowing — and then kept deciding, year after year, long after the men who made that decision were gone.</p>';
       for (const c of all) {
-        const s = (c.solutions || [])[0];
-        if (s) h += '<div class="cardx" style="margin-top:10px"><h3>' + VG.htmlEscape(c.title) + '</h3><p>' + VG.htmlEscape(s.label) + '</p></div>';
+        /* the conclusion the investigator actually filed, not the first one in
+           the data. The ending is theirs - it used to be decided by the order
+           the cases happened to be written in. */
+        const fid = VG.filedConclusion(c, p);
+        const s = (c.solutions || []).find((x) => x.id === fid);
+        if (!s) continue;
+        h += '<div class="cardx" style="margin-top:10px"><h3>' + VG.htmlEscape(c.title) + '</h3><p>' + VG.htmlEscape(s.label) + '</p></div>';
+      }
+      /* what the choices bought, and what they cost */
+      h += '<div class="cardx" style="margin-top:10px"><h3>Standing</h3><p>' +
+        'The Ledger ' + (p.rep.ledger || 0) + ' · The Choir ' + (p.rep.choir || 0) +
+        ' · Free Line ' + (p.rep.free_line || 0) + '</p></div>';
+      const refused = Object.keys(p.rejectedTheories || {}).reduce((a, k) => a + (p.rejectedTheories[k] || 0), 0);
+      if (refused) {
+        h += '<p class="muted" style="margin-top:10px">The file carries ' + refused +
+          (refused === 1 ? ' rejected theory' : ' rejected theories') + '. The Office does not forget, but it has what it came for.</p>';
       }
       h += '<div style="height:14px"></div><div class="meta">Survey Office — Field Report ' + VG.nowStamp() + '</div>';
       body.innerHTML = h;

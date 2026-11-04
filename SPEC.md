@@ -163,10 +163,11 @@ Rules:
 
 ## Engine contract (what your data is allowed to assume)
 
-- The engine reads `VG.ITEMS`, `VG.CASES`, `VG.FACTIONS`, `VG.QUESTS`, `VG.RARITY`, `VG.RARITY_COLOR`.
+- The engine reads `VG.ITEMS`, `VG.CASES`, `VG.FACTIONS`, `VG.QUESTS`, `VG.RARITY`, `VG.RARITY_COLOR`, and `VG.CASE_QUESTIONS` (the question the Office asks about each deduction, keyed by deduction id).
 - The engine works **one file at a time**, in the order the cases appear in the data. Only the open file's evidence is in the world at all; closing a file opens the next one and puts its evidence into the flats.
 - The engine places each clue at a POI of the matching `poi` type, inside that building's room. The building is never marked on the map until the player has charted it.
-- The engine surfaces `cases[].facts` in the Journal as **Evidence** (facts the player knows), `cases[].deductions` as **Deductions** the player can assemble by picking two known facts, and `cases[].solutions` as **Conclusions** (multi-fact).
+- The engine asks each deduction as a **question** (`VG.CASE_QUESTIONS[deduction.id]`). The player answers with the claim they believe and the evidence they cite. Both must be right. A theory the engine refuses is recorded on the file and the first one on a question costs a point of standing with the Ledger.
+- The engine surfaces `cases[].facts` in the Journal as **Evidence**, `cases[].deductions` as **Deductions** the player can assemble, and `cases[].solutions` as **Conclusions**. A file with more than one solution is a fork: the player files the reading they believe, and may reopen the file later (at a cost) to file the other one.
 - Nothing in the engine mutates your objects except `reward.rep` values.
 - Do not reference `chapter` for gating logic — the engine handles the file order and the chapter unlocks. `chapter` is a label the Journal prints.
 

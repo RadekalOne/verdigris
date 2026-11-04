@@ -68,8 +68,8 @@ console.log('== loading modules ==');
    touch the DOM and the event loop, and none of them carries a rule this
    file is about. */
 ['src/core.js', 'src/items.js', 'src/factions.js', 'src/cases.js', 'src/cases_b.js',
-  'src/world.js', 'src/loot.js', 'src/player.js', 'src/interiors.js',
-  'src/caseflow.js', 'src/ui.js', 'src/main.js'].forEach((f) => {
+  'src/world.js', 'src/case_questions.js', 'src/caseflow.js', 'src/loot.js', 'src/player.js', 'src/interiors.js',
+  'src/ui.js', 'src/main.js'].forEach((f) => {
     if (!load(f)) fail++;
   });
 
@@ -175,6 +175,9 @@ console.log('\n== the handover ==');
   VG.log = (m) => { logs.push(String(m)); };
 
   const sol = (FIRST.solutions || [])[0];
+  /* a conclusion can only be filed on the evidence, so the player has to
+     have the facts before the file can be closed */
+  for (const f of (FIRST.facts || [])) p.knownFacts[f.id] = FIRST.id;
   VG.conclude(FIRST, sol);
 
   const open = VG.openCase(p);
@@ -214,6 +217,7 @@ console.log('\n== nothing can be lost ==');
 
   /* the player empties every crate in the world before the next file opens */
   for (const c of w.containers) c.opened = true;
+  for (const f of (FIRST.facts || [])) p.knownFacts[f.id] = FIRST.id;
   VG.conclude(FIRST, (FIRST.solutions || [])[0]);
 
   const placed = w.clues.filter((c) => c.caseId === SECOND.id);
@@ -230,6 +234,140 @@ console.log('\n== nothing can be lost ==');
     (wrongType.length ? ' BAD ' + wrongType.join(', ') : ''));
 }
 
+console.log('\n== the Office asks you to answer for it ==');
+{
+  const w = VG.genWorld(4242);
+  const p = VG.newPlayer(w);
+  VG.Player = p;
+
+  /* every deduction in every file has to have a question, or the Office is
+     asking nothing and the player is back to spotting pairs */
+  let noQuestion = [];
+  for (const c of ALL) {
+    for (const d of (c.deductions || [])) {
+      if (!VG.questionFor(d.id)) noQuestion.push(d.id);
+    }
+  }
+  ok(noQuestion.length === 0, 'every deduction has a question the Office asks' +
+    (noQuestion.length ? ' MISSING ' + noQuestion.slice(0, 6).join(', ') : ''));
+
+  /* the question only becomes askable once the player holds the evidence */
+  const ded = FIRST.deductions[0];
+  ok(VG.openQuestions(FIRST, p).length === 0, 'no question is asked before the evidence is in hand');
+  for (const i of ded.inputs) p.knownFacts[i] = FIRST.id;
+  const live = VG.openQuestions(FIRST, p);
+  ok(live.length === 1 && live[0].id === ded.id, 'the question opens when its evidence is held');
+
+  /* the answers are the claims of the file, not a yes/no */
+  const answers = VG.caseAnswers(FIRST);
+  ok(answers.length === FIRST.deductions.length, 'the player chooses between ' + answers.length + ' claims');
+  ok(answers.some((a) => a.id === ded.output), 'the right answer is among them');
+  ok(answers.some((a) => a.id !== ded.output), 'and so are the wrong ones');
+
+  /* a wrong theory is rejected, and it costs */
+  const repBefore = p.rep.ledger || 0;
+  const wrong = VG.answerQuestion(FIRST, ded.id, 'not_a_fact', ded.inputs.slice(), p);
+  ok(!wrong.ok, 'a wrong answer is rejected');
+  ok((p.rep.ledger || 0) < repBefore, 'a rejected theory costs standing with the Ledger');
+  ok(p.knownFacts[ded.output] === undefined, 'a rejected theory establishes nothing');
+
+  /* the wrong evidence is rejected the same way, and only the first mistake
+     on a question costs - the Office makes its point once */
+  const repAfter = p.rep.ledger || 0;
+  const wrong2 = VG.answerQuestion(FIRST, ded.id, ded.output, [ded.inputs[0]], p);
+  ok(!wrong2.ok, 'citing the wrong evidence is rejected');
+  ok((p.rep.ledger || 0) === repAfter, 'the second mistake on the same question is free');
+
+  /* the right answer with the right evidence opens the fact */
+  const right = VG.answerQuestion(FIRST, ded.id, ded.output, ded.inputs.slice(), p);
+  ok(right.ok, 'the right answer with the right evidence is accepted');
+  ok(p.knownFacts[ded.output] === FIRST.id, 'the fact is established');
+  ok(VG.openQuestions(FIRST, p).length === 0, 'the answered question closes');
+}
+
+console.log('\n== a conclusion is a choice ==');
+{
+  const w = VG.genWorld(4242);
+  const p = VG.newPlayer(w);
+  VG.Player = p;
+  const FORK = ALL.find((c) => (c.solutions || []).length > 1);
+  ok(!!FORK, 'a file with two conclusions exists to fork on');
+
+  /* the player must be able to choose, not have the engine choose */
+  const opts = VG.conclusionOptions(FORK, p);
+  ok(opts.length === FORK.solutions.length, 'both conclusions are offered');
+  ok(opts.every((o) => !o.ready), 'neither is fileable before the evidence is held');
+
+  /* work the files up to the fork so it is the open one */
+  for (const c of ALL) {
+    if (c.id === FORK.id) break;
+    for (const f of (c.facts || [])) p.knownFacts[f.id] = c.id;
+    const s = VG.canConclude(c, p);
+    if (s) VG.fileConclusion(c, s.id, p);
+  }
+  ok(VG.openCase(p) && VG.openCase(p).id === FORK.id, 'the forked file is the open one');
+
+  for (const f of FORK.facts) p.knownFacts[f.id] = FORK.id;
+  const ready = VG.conclusionOptions(FORK, p);
+  ok(ready.filter((o) => o.ready).length === FORK.solutions.length,
+    'both conclusions become fileable once the file is worked through');
+
+  /* filing the first one closes the file with that reading */
+  const first = ready.find((o) => o.ready);
+  VG.fileConclusion(FORK, first.sol.id, p);
+  ok(VG.filedConclusion(FORK, p) === first.sol.id, 'the filed conclusion is the one the player chose');
+  ok(VG.caseClosed(FORK, p), 'the file is closed');
+
+  /* and the other reading can be reached later, by reopening the file at a
+     price - that is the cost of changing your mind */
+  ok(VG.canAmend(FORK, p), 'the file can be reopened once the other reading is supported');
+  const repBefore = p.rep.ledger || 0;
+  const other = FORK.solutions.find((s) => s.id !== first.sol.id);
+  const oldItems = (first.sol.reward && first.sol.reward.items) || [];
+  const oldItem = oldItems.length ? oldItems[0] : null;
+  const heldBefore = oldItem ? (VG.invCount(p, oldItem) || 0) : 0;
+  VG.amendConclusion(FORK, other.id, p);
+  ok((p.rep.ledger || 0) < repBefore, 'reopening the file costs standing with the Ledger');
+  ok(VG.filedConclusion(FORK, p) === other.id, 'the amended conclusion is the one on the file');
+  ok(VG.caseClosed(FORK, p), 'the file is still closed after the amendment');
+  ok(!VG.canAmend(FORK, p), 'a file cannot be reopened twice for the same reading');
+  /* the reading that was struck out must not pay twice */
+  if (oldItem) {
+    ok((VG.invCount(p, oldItem) || 0) < heldBefore,
+      'the goods the withdrawn reading paid in are taken back');
+  }
+  const newItems = (other.reward && other.reward.items) || [];
+  if (newItems.length) {
+    ok((VG.invCount(p, newItems[0]) || 0) > 0, 'the reading now on the file pays its goods');
+  }
+}
+
+console.log('\n== the ending is the player\'s ==');
+{
+  const w = VG.genWorld(4242);
+  const p = VG.newPlayer(w);
+  VG.Player = p;
+  /* close every file, taking the SECOND reading wherever there is one */
+  for (const c of ALL) {
+    for (const f of (c.facts || [])) p.knownFacts[f.id] = c.id;
+    const opts = VG.conclusionOptions(c, p).filter((o) => o.ready);
+    if (!opts.length) continue;
+    const pick = opts[opts.length - 1];
+    VG.fileConclusion(c, pick.sol.id, p);
+  }
+  const allClosed = ALL.every((c) => VG.filedConclusion(c, p));
+  ok(allClosed, 'every file carries the conclusion the player chose');
+  /* the ending must list what was filed, not what the data says first */
+  const forks = ALL.filter((c) => (c.solutions || []).length > 1);
+  let wrong = [];
+  for (const c of forks) {
+    const fid = VG.filedConclusion(c, p);
+    if (fid === (c.solutions || [])[0].id) wrong.push(c.id);
+  }
+  ok(wrong.length === 0, 'the ending follows the player\'s reading, not the data order' +
+    (wrong.length ? ' WRONG ' + wrong.join(', ') : ''));
+}
+
 console.log('\n== a reloaded world is the same world ==');
 {
   /* the save stores the seed and rebuilds the world from it, so the evidence
@@ -239,6 +377,7 @@ console.log('\n== a reloaded world is the same world ==');
   const p1 = VG.newPlayer(w1);
   VG.Player = p1;
   VG.INT.prepare(w1);
+  for (const f of (FIRST.facts || [])) p1.knownFacts[f.id] = FIRST.id;
   VG.conclude(FIRST, (FIRST.solutions || [])[0]);
   const before = {};
   for (const c of w1.clues) before[c.id] = w1.poiById(w1.containers[c.container].poi).id;

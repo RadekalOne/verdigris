@@ -23,6 +23,7 @@ window.VG = window.VG || {};
       readClues: {},              // clueId -> true
       solvedSolutions: {},        // solutionId -> caseId
       foundClues: {},             // caseId -> [clueIds]
+      rejectedTheories: {},       // deductionId -> how many theories the Office refused
       xp: 0, level: 1,
       killed: 0, containersOpened: 0,
       lastDamage: 0,

@@ -52,7 +52,8 @@ window.VG = window.VG || {};
         x: px, y: py, hp: p.hp, stam: p.stam, food: p.food, water: p.water, dose: p.dose,
         inv: p.inv, ammo: p.ammo, hotbar: p.hotbar, sel: p.sel, weapon: p.weapon, armor: p.armor,
         rep: p.rep, knownFacts: p.knownFacts, readClues: p.readClues, solvedSolutions: p.solvedSolutions,
-        foundClues: p.foundClues, xp: p.xp, level: p.level, killed: p.killed, containersOpened: p.containersOpened
+        foundClues: p.foundClues, rejectedTheories: p.rejectedTheories,
+        xp: p.xp, level: p.level, killed: p.killed, containersOpened: p.containersOpened
       },
       opened: w.containers.filter((c) => c.opened).map((c) => c.id),
       discovered: w.pois.filter((q) => q.discovered).map((q) => q.id),
@@ -86,6 +87,7 @@ window.VG = window.VG || {};
       p.rep = s.rep || p.rep; p.knownFacts = s.knownFacts || {};
       p.readClues = s.readClues || {}; p.solvedSolutions = s.solvedSolutions || {};
       p.foundClues = s.foundClues || {};
+      p.rejectedTheories = s.rejectedTheories || {};
       /* A save written before the flats had a usable gun would load a world
          with nothing to shoot, and the player would rightly conclude the
          game is broken. The Survey Office issues you a revolver if you turn

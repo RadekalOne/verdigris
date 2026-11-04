@@ -100,4 +100,143 @@ window.VG = window.VG || {};
     }
     return world;
   };
+
+  /* ---------------------------------------------------------------- */
+  /* the questions
+     ---------------------------------------------------------------- */
+
+  /* A deduction is ready to be asked when the player holds every fact it
+     rests on. The Office does not ask a question the player cannot answer. */
+  VG.deductionReady = function (ded, p) {
+    if (!ded || !p) return false;
+    const known = p.knownFacts || {};
+    return (ded.inputs || []).every((i) => !!known[i]);
+  };
+
+  /* The questions the Office is waiting to ask: the deductions whose
+     evidence the player holds and whose claim they have not established
+     yet. */
+  VG.openQuestions = function (cse, p) {
+    if (!cse) return [];
+    const known = (p && p.knownFacts) || {};
+    const out = [];
+    for (const d of (cse.deductions || [])) {
+      if (known[d.output]) continue;
+      if (!VG.deductionReady(d, p)) continue;
+      out.push(d);
+    }
+    return out;
+  };
+
+  /* The claims the player may choose between. They are the claims the file
+     itself makes, so several of them are always plausible for any one
+     question - which is the point. The evidence is what settles it. */
+  VG.caseAnswers = function (cse) {
+    if (!cse) return [];
+    const facts = cse.facts || [];
+    const out = [];
+    for (const d of (cse.deductions || [])) {
+      const f = facts.find((x) => x.id === d.output);
+      if (f) out.push({ id: f.id, label: f.label, known: false });
+    }
+    return out;
+  };
+
+  /* Answer a question. The player states the claim they believe and cites
+     the evidence for it. Both have to be right, and the evidence has to be
+     the evidence and not a pile of everything they happen to know.
+
+     A wrong answer is a theory the Office did not accept, and the Office
+     keeps a record of those. The first mistake on a question costs a point
+     of standing with the Ledger; after that the point has been made and
+     the file is not charged for it twice. */
+  VG.answerQuestion = function (cse, dedId, answerId, evidence, p) {
+    if (!cse || !p) return { ok: false, reason: 'No file is open.' };
+    const d = (cse.deductions || []).find((x) => x.id === dedId);
+    if (!d) return { ok: false, reason: 'That is not a question this file asks.' };
+    const known = p.knownFacts || {};
+    if (known[d.output]) return { ok: false, reason: 'The Office has already accepted that answer.' };
+
+    const cited = (evidence || []).slice().sort();
+    const want = (d.inputs || []).slice().sort();
+    const sameEvidence = cited.length === want.length && cited.every((x, i) => x === want[i]);
+    const rightClaim = (answerId === d.output);
+
+    if (!rightClaim || !sameEvidence) {
+      if (!p.rejectedTheories) p.rejectedTheories = {};
+      const first = !p.rejectedTheories[dedId];
+      p.rejectedTheories[dedId] = (p.rejectedTheories[dedId] || 0) + 1;
+      let cost = 0;
+      if (first) {
+        cost = 1;
+        p.rep = p.rep || {};
+        p.rep.ledger = (p.rep.ledger || 0) - 1;
+      }
+      const fact = (cse.facts || []).find((x) => x.id === d.output);
+      return {
+        ok: false,
+        cost: cost,
+        reason: !rightClaim
+          ? 'The Office does not accept that reading.'
+          : 'That is not the evidence for it.'
+      };
+    }
+
+    known[d.output] = cse.id;
+    const fact = (cse.facts || []).find((x) => x.id === d.output);
+    return { ok: true, note: d.note, label: fact ? fact.label : d.output };
+  };
+
+  /* ---------------------------------------------------------------- */
+  /* the conclusions
+     ---------------------------------------------------------------- */
+
+  /* The conclusions the player could file, and whether each is supported
+     by the evidence they hold. A file with more than one conclusion is a
+     fork: both are real readings, and the player is the one who decides
+     which one goes on the file. */
+  VG.conclusionOptions = function (cse, p) {
+    if (!cse) return [];
+    const known = (p && p.knownFacts) || {};
+    const filed = (p && p.solvedSolutions && p.solvedSolutions[cse.id]) || [];
+    const out = [];
+    for (const s of (cse.solutions || [])) {
+      const ready = (s.requires || []).every((r) => !!known[r]);
+      out.push({
+        sol: s,
+        ready: ready,
+        filed: filed.indexOf(s.id) >= 0,
+        requires: s.requires || []
+      });
+    }
+    return out;
+  };
+
+  /* The conclusion currently on the file. A file can be reopened and
+     amended, so this is the last one filed, not the first. */
+  VG.filedConclusion = function (cse, p) {
+    if (!cse || !p) return null;
+    const list = (p.solvedSolutions && p.solvedSolutions[cse.id]) || [];
+    return list.length ? list[list.length - 1] : null;
+  };
+
+  /* Can the file be reopened? Only if the player has the evidence for a
+     reading that is not the one on the file. There is nothing to reopen it
+     for otherwise. */
+  VG.canAmend = function (cse, p) {
+    if (!cse || !p) return false;
+    const current = VG.filedConclusion(cse, p);
+    if (!current) return false;
+    const filed = (p.solvedSolutions && p.solvedSolutions[cse.id]) || [];
+    const known = p.knownFacts || {};
+    for (const s of (cse.solutions || [])) {
+      if (filed.indexOf(s.id) >= 0) continue;
+      if ((s.requires || []).every((r) => !!known[r])) return true;
+    }
+    return false;
+  };
+
+  /* The cost of changing your mind: two points of standing with the
+     Ledger, and the reading you are withdrawing is struck from the file. */
+  VG.AMEND_COST = 2;
 })(window.VG);

@@ -41,7 +41,7 @@ const ok = (cond, msg) => { if (!cond) { console.log('  FAIL ' + msg); fail++; }
 
 console.log('== loading modules ==');
 ['src/core.js', 'src/items.js', 'src/factions.js', 'src/cases.js', 'src/cases_b.js',
- 'src/world.js', 'src/caseflow.js', 'src/loot.js', 'src/player.js', 'src/save.js', 'src/audio.js', 'src/help.js',
+ 'src/world.js', 'src/case_questions.js', 'src/caseflow.js', 'src/loot.js', 'src/player.js', 'src/save.js', 'src/audio.js', 'src/help.js',
  'src/ui.js', 'src/main.js'].forEach((f) => {
   const loaded = load(f);
   if (!loaded) fail++;

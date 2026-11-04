@@ -143,8 +143,8 @@ window.VG = window.VG || {};
       when: () => !!(VG.DYN && VG.DYN.profile && VG.DYN.profile().call[0] > 0)
     },
     { id: 'read', keys: ['J'], text: 'Open the Survey Journal and read the evidence you found.' },
-    { id: 'deduced', keys: ['J'], text: 'In EVIDENCE, click two facts, then press ASSEMBLE DEDUCTION.' },
-    { id: 'concluded', keys: ['J'], text: 'Open CASES, pick the file, and press FILE CONCLUSION.' }
+    { id: 'deduced', keys: ['J'], text: 'In QUESTIONS, answer the Office. Say what you believe and cite the evidence for it.' },
+    { id: 'concluded', keys: ['J'], text: 'Open CASES, pick the file, and file the conclusion the evidence supports.' }
   ];
 
   /* a step is only in play when its predicate passes */
@@ -154,7 +154,7 @@ window.VG = window.VG || {};
   }
   function liveSteps() { return STEPS.filter(stepApplies); }
 
-  const HOW = 'Reading a clue establishes a fact. Selecting two facts and assembling them yields a deduction, and a deduction can establish another fact. Hold the facts a case needs and you can close the file.';
+  const HOW = 'Reading a clue establishes a fact. The Office asks you questions about the file — answer one with the claim you believe and the evidence you are citing, and it may establish another fact. Hold the facts a file needs and you can put a conclusion on it. Some files carry two readings; you choose which one goes on the file, and you can reopen a file later if you change your mind.';
 
   /* the checklist signature, so the panel only rebuilds when it actually changed */
   let lastSig = '';
@@ -295,8 +295,9 @@ window.VG = window.VG || {};
         'needs - a Sheriff Post, a Diner, a Freight Depot - and it does not mark where that building is, because ' +
         'nobody has charted it yet. The panel on the right tells you which kinds to look for and gives you a ' +
         'bearing to the nearest one you have already charted; the map (M) rings and names the ones you have. ' +
-        'Go in, press E on the crates, and read what is there. Find the evidence, assemble the deductions, and ' +
-        'close the file - and closing it opens the next one, which is somewhere new.</p>';
+        'Go in, press E on the crates, and read what is there. Then answer the questions the Office asks: say ' +
+        'what you believe and cite the evidence for it. When the file has what it needs, put a conclusion on it - ' +
+        'and closing it opens the next one, which is somewhere new.</p>';
 
       /* the checklist */
       h += '<h3 style="color:var(--amber);font-size:12px;letter-spacing:.08em;margin:16px 0 6px">Getting started</h3>';
