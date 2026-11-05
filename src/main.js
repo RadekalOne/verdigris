@@ -29,6 +29,16 @@ window.VG = window.VG || {};
   VG.isWaterPoi = function (poi) { return poi.type === 'well' || poi.type === 'watertower'; };
   VG.poiReach = function (poi) { return poi.radius + (VG.isWaterPoi(poi) ? 26 : 0); };
 
+  /* The tag a faction post wears in the world prompt. Standing at one of
+     these is the only place a contract can be handed in, so the prompt says
+     so rather than leaving the player to work it out. */
+  const postTag = (poi) => {
+    const fid = VG.postFactionOf ? VG.postFactionOf(poi) : null;
+    if (!fid) return '';
+    const f = (VG.FACTIONS || []).find((x) => x.id === fid);
+    return ' <span class="muted">· ' + (f ? f.name : 'Faction') + ' post · press B for their sheet</span>';
+  };
+
   /* the nearest well or water tower within reach, if there is one */
   VG.nearestWater = function (p, world) {
     let best = null, bd = 1e9;
@@ -134,11 +144,21 @@ window.VG = window.VG || {};
   };
 
   VG.openContainer = function (c, p) {
-    if (c.opened) return;
+    /* An emptied crate cannot be searched again - UNLESS the Office has since
+       filed evidence in it. It has to be allowed: the crate a file points at
+       is chosen by the seed and not by what the player happens to have done
+       already, so the evidence can land in a crate the player has taken. The
+       contents are not given back a second time; only the evidence is new.
+       Re-arming the crate instead would hand out the same copper twice. */
+    const cl = c.clueId ? VG.findClue(c.clueId) : null;
+    const holdsClue = !!(cl && !(p.readClues && p.readClues[cl.id]));
+    if (c.opened && !holdsClue) return;
+    const emptied = c.opened;
     /* The first time a crate is searched, its contents are decided and kept.
        A crate that did not fit in the pack stays worth searching, so the
        loot has to be the same loot the second time. */
-    const first = !c.loot;
+    const first = !emptied && !c.loot;
+    if (emptied) c.loot = [];
     if (first) {
       p.containersOpened++;
       if (VG.DYN) VG.DYN.addHeat(0.18);
@@ -176,6 +196,10 @@ window.VG = window.VG || {};
     }
     if (lines.length) {
       VG.log('Searched: ' + lines.join(', '), 'good');
+      if (VG.Audio) VG.Audio.pickup();
+    }
+    else if (emptied) {
+      VG.log('The crate is picked clean, but a folder is wedged down the side.', 'good');
       if (VG.Audio) VG.Audio.pickup();
     }
     else VG.log('Nothing but dust.', '');
@@ -272,6 +296,11 @@ window.VG = window.VG || {};
       const want = VG.caseWantedTypes(next, p).map((k) => VG.poiTypeName(k));
       if (want.length) {
         VG.log('The file needs a ' + want.join(', a ') + '. Go in and search it.', '');
+      }
+      /* and the Office says so when the file wants you in the yard */
+      if (VG.yardWarning) {
+        const warn = VG.yardWarning(next, p);
+        if (warn) VG.log(warn, 'bad');
       }
     }
     const all = VG.allCases();
@@ -548,9 +577,24 @@ window.VG = window.VG || {};
      one of them had to be found in a crate. The things that walk around
      the flats are made of the same stuff the crates are made of, and a
      survey that goes out on the flats should come back with something. */
+  /* How many stacks a kill leaves, by kind. This used to be one or two for
+     the Rusted and the Drover, and a third of all Rusted kills came away
+     with a single unit - a fight you won and a pack that had nothing in it.
+     Two is the floor now: you always come back with something. The Rusted and
+     the Drover leave exactly two stacks, which puts them at about three and a
+     half units a kill; the Warden keeps its two or three, because a Warden is
+     a fight and should pay like one. This is the one knob for the whole
+     table; the ranges below are the shape of it. */
+  VG.DROP_STACKS = { rusted: [2, 2], drover: [2, 2], warden: [2, 3] };
+
+  /* Copper carries the economy - the contracts are priced in it - so its
+     share is set deliberately rather than falling out of splitting the table
+     evenly. At [1,4] a Rusted hands over about 1.25 copper a kill, which
+     makes eight copper about six kills. The other materials are spread so
+     that no one of them is the only thing worth picking up. */
   VG.ENEMY_DROP = {
-    rusted: [['scrap_copper', 1, 3], ['scrap_cloth', 1, 2], ['scrap_ceramic', 1, 2], ['scrap_gear', 1, 1]],
-    drover: [['scrap_gear', 1, 2], ['scrap_copper', 1, 3], ['scrap_glass', 1, 1]],
+    rusted: [['scrap_copper', 1, 4], ['scrap_cloth', 1, 2], ['scrap_ceramic', 1, 2], ['scrap_gear', 1, 2]],
+    drover: [['scrap_gear', 1, 2], ['scrap_copper', 1, 4], ['scrap_glass', 1, 2], ['scrap_ceramic', 1, 2]],
     warden: [['scrap_copper', 2, 4], ['scrap_gear', 1, 2], ['ammo_slug', 2, 6]]
   };
 
@@ -558,7 +602,8 @@ window.VG = window.VG || {};
     const table = VG.ENEMY_DROP[e.kind] || VG.ENEMY_DROP.rusted;
     const rng = VG.makeRng((VG.World.seed ^ (e.x * 7919) ^ (e.y * 104729) ^ (e.id.length * 31)) >>> 0);
     const out = [];
-    const n = e.kind === 'warden' ? rng.int(2, 3) : rng.int(1, 2);
+    const stacks = VG.DROP_STACKS[e.kind] || VG.DROP_STACKS.rusted;
+    const n = rng.int(stacks[0], stacks[1]);
     for (let i = 0; i < n; i++) {
       const pick = rng.pick(table);
       out.push({ id: pick[0], qty: rng.int(pick[1], pick[2]) });
@@ -708,7 +753,8 @@ window.VG = window.VG || {};
         pr.innerHTML = 'E — <b>step back outside</b> <span class="muted">· ' + (VG.INT.active ? VG.INT.active.tpl.title : '') + ' · or ESC</span>';
       } else if (target && target.kind === 'door') {
         pr.style.display = 'block';
-        pr.innerHTML = 'E — <b>go inside</b> <span class="muted">· ' + target.obj.name + '</span>';
+        pr.innerHTML = 'E — <b>go inside</b> <span class="muted">· ' + target.obj.name + '</span>' +
+          (VG.postFactionOf && VG.postFactionOf(target.obj) ? postTag(target.obj, p) : '');
       } else if (target && target.kind === 'container') {
         const c = target.obj;
         pr.style.display = 'block';
@@ -720,6 +766,8 @@ window.VG = window.VG || {};
         pr.style.display = 'block';
         if (VG.isWaterPoi(poi)) {
           pr.innerHTML = 'E — <b>draw water</b> <span class="muted">' + poi.name + '</span>';
+        } else if (VG.postFactionOf && VG.postFactionOf(poi)) {
+          pr.innerHTML = '<b>' + poi.name + '</b> — ' + postTag(poi, p);
         } else {
           pr.innerHTML = poi.name + ' <span class="muted">— press E to survey</span>';
         }
@@ -857,6 +905,12 @@ window.VG = window.VG || {};
       VG.log('Verdigris Flats. ' + VG.nowStamp() + '. Start at the Survey Office trailer.', 'clue');
       VG.log('Search the flats. Read what is left. Close the files.', '');
       VG.log('Channel three is open. If somebody calls, go and see.', '');
+      /* the Office warns you about the one place it knows will kill you */
+      const open0 = VG.openCase(VG.Player);
+      if (open0 && VG.yardWarning) {
+        const warn = VG.yardWarning(open0, VG.Player);
+        if (warn) VG.log(warn, 'bad');
+      }
       /* Say what is in your hand and how far it reaches. A player who does
          not know the reach of their own gun will find out by shooting at
          something that is still a long way off, and will conclude the gun

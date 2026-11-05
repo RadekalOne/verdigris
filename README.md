@@ -196,7 +196,7 @@ health bar. It is not the game.
 |---|---|
 | **They are faster than you walk** | A rusted walks at 138, a warden at 152, a drover at 170. You walk at 132 and sprint at 205. A sprint outruns every one of them, but a sprint is not a thing you can do for four minutes — so the answer is to sprint, or fight, or break the line of sight. Standing still is not one of the options. |
 | **The lunge** | Close in, and one stops. The lane it will travel down is drawn on the ground along the direction it was facing when it stopped, and the lane is exactly where it will go. Step out of it and it misses. It cannot lunge again for a few seconds, so a missed lunge is a free window to shoot. |
-| **They leave what they were made of** | A rusted that goes down leaves copper, cloth, ceramic or gear; a warden leaves more, and a few rounds. The contracts ask for exactly this scrap, and the crates used to be the only place any of it came from. |
+| **They leave what they were made of** | A rusted that goes down leaves two to eight units of scrap — copper, cloth, ceramic or gear — and about three and a half on average. A drover leaves about the same, with glass in the pile. A warden leaves about seven, and a few rounds. Copper carries the economy: eight copper is about six kills. The contracts ask for exactly this scrap, and the crates used to be the only place any of it came from. |
 | **Your pack has a limit** | 140 weight. What does not fit in a crate **stays in the crate** — nothing is lost to a full pack, it is only late — and you can put something down from the Field Kit to make room. |
 | **Ammunition is made at a bench** | A bench recipe needs a bench, and a bench is a thing in a room: the depot press, the market stall, the substation bench, the fuel stop bench. Fieldcraft — a bandage, a tin of water — needs nothing but your hands. |
 | **The evidence is watched** | The buildings a file points you at are not empty. Something is standing in front of them, and it holds its ground rather than wandering off across the flats. |
@@ -211,6 +211,39 @@ breath.
 All of it is in the **Field Manual** under `H` → *The flats*, and it is asserted in
 `test/pressure.js`, which tests the engine path rather than the data tables: a world full of
 numbers is not a world that pushes back.
+
+## The posts
+
+The factions used to be menus. You opened a list of contracts, handed in what you were holding,
+and got paid wherever you happened to be standing — so the only thing standing ever did was
+gate which contracts appeared in the list. There was no place to go, and nothing about the
+world changed shape when your standing changed.
+
+Each faction keeps a post in the world now:
+
+| Faction | Post | What it means |
+|---|---|---|
+| **The Ledger** | the bank | A salvage bureaucracy that wants the record to stay true. |
+| **The Choir** | the chapel | A congregation that thinks the station was interrupted, not decommissioned. |
+| **Free Line** | the substation | Independent traders who want the flats opened and the grid running. |
+
+A contract is handed in **at the post**. You have to be standing there. Try it anywhere else and
+they tell you where their post is and how far it is — nothing is taken and nothing is paid, so
+turning one in from the wrong side of the flats costs you the walk and nothing else.
+
+Standing is now visible at the moment of choice. The contract sheet (`B`) names the post each
+contract has to go to, how far away it is, and what your standing with that faction is. A wrong
+theory the Office refuses costs a point of standing with the Ledger; reopening a file costs two.
+That is the whole currency now, and it is a door rather than a number.
+
+The post is marked on the map in the faction's colour — but only once you have been there. The
+marker is for having found it; the sheet names it and gives you a bearing the whole time,
+because the Office knows where its own counter is.
+
+A post is not a new building. The Ledger working out of the bank is a fact about the bank, and
+the flats already had a bank. It is asserted in `test/posts.js`, which tests the engine path:
+that a contract handed in away from the post earns nothing, takes nothing, and that the same
+building is the post in every world built from the same seed.
 
 ## Aiming and shooting
 

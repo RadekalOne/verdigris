@@ -135,3 +135,63 @@ VG.QUESTS = [
     reward: { items: ['mat_fuel_tablet', 'scrap_gear'], rep: { free_line: 7 }, xp: 360 }
   }
 ];
+
+  /* ---------- the posts ----------
+     Where each faction keeps its post.
+
+     A contract that can be handed in from anywhere is a checklist, and a
+     checklist does not make you walk anywhere. The posts put the factions in
+     the world: The Ledger works out of the bank, The Choir out of the chapel,
+     Free Line out of the substation. These are buildings the flats already
+     have - a post is a desk in a building that is already there, not a new
+     kind of building to draw or a new room to furnish.
+
+     There is exactly one bank and one chapel. There are four substations, so
+     the Free Line post is the one nearest the start - which is also the one
+     the survey is pointed at first, so the post is on the way rather than a
+     separate trip. The choice is a function of the seed and nothing else, so
+     it is the same post in every world built from that seed. */
+  VG.FACTION_POST = { ledger: 'bank', choir: 'chapel', free_line: 'substation' };
+
+  VG.postPoi = function (world, faction) {
+    if (!world || !faction) return null;
+    const kind = VG.FACTION_POST[faction];
+    if (!kind) return null;
+    const s = world.start || { x: 0, y: 0 };
+    let best = null, bd = Infinity;
+    for (const poi of world.pois) {
+      if (poi.type !== kind) continue;
+      const d = VG.dist(poi.x, poi.y, s.x, s.y);
+      if (!best || d < bd || (d === bd && String(poi.id) < String(best.id))) { bd = d; best = poi; }
+    }
+    return best;
+  };
+
+  /* The post as a place the player can act on: how far, which way, and the
+     name they will recognise on the map. */
+  VG.postPlace = function (world, faction, p) {
+    const poi = VG.postPoi(world, faction);
+    if (!poi) return null;
+    const out = {
+      poi: poi, faction: faction,
+      name: poi.name || VG.poiTypeName(poi.type),
+      kind: VG.poiTypeName(poi.type),
+      dist: 0, dir: '', here: false
+    };
+    if (p) {
+      out.dist = VG.dist(p.x, p.y, poi.x * VG.TILE, poi.y * VG.TILE);
+      out.dir = VG.compassDir(poi.x * VG.TILE - p.x, poi.y * VG.TILE - p.y);
+      out.here = out.dist <= VG.poiReach(poi);
+    }
+    return out;
+  };
+
+  /* The faction whose post this building is, if it is one. */
+  VG.postFactionOf = function (poi) { return (poi && poi.post) || null; };
+
+  /* Is the player standing at this faction's post? */
+  VG.atPost = function (world, faction, p) {
+    const place = VG.postPlace(world, faction, p);
+    return !!(place && place.here);
+  };
+

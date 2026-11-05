@@ -16,8 +16,10 @@
      3. Every building says what it is.
      4. Only the file the Office is working is in the world at all.
      5. Closing a file opens the next one and puts its evidence in the world.
-     6. Evidence is never placed in a container the player has already
-        emptied, so a file can never become impossible to close.
+     6. Evidence is never placed where it cannot be found, so a file can never
+        become impossible to close - and the crate it lands in does not depend
+        on what the player has already done, so a reloaded survey puts the
+        evidence back where the player left it.
      7. A reloaded world puts the evidence back in the same places, because
         the world is rebuilt from the seed and the placement must survive.
 
@@ -216,14 +218,27 @@ console.log('\n== nothing can be lost ==');
   VG.INT.prepare(w);
 
   /* the player empties every crate in the world before the next file opens */
-  for (const c of w.containers) c.opened = true;
+  for (const c of w.containers) { c.opened = true; c.loot = []; }
   for (const f of (FIRST.facts || [])) p.knownFacts[f.id] = FIRST.id;
   VG.conclude(FIRST, (FIRST.solutions || [])[0]);
 
   const placed = w.clues.filter((c) => c.caseId === SECOND.id);
   ok(placed.length === SECOND.clues.length, 'the next file still gets all of its evidence');
-  const buried = placed.filter((c) => w.containers[c.container] && w.containers[c.container].opened);
-  ok(buried.length === 0, 'no evidence was placed in a crate the player had already emptied');
+
+  /* The crate the evidence lands in is chosen by the seed, not by what the
+     player has already done - so it can be a crate the player emptied. The
+     guarantee is therefore not "it avoids emptied crates", it is "the
+     evidence is still findable": searching the crate has to reveal it. */
+  let unfindable = [];
+  for (const c of placed) {
+    const box = w.containers[c.container];
+    if (!box) { unfindable.push(c.id + ' (no crate)'); continue; }
+    VG.openContainer(box, p);
+    if (!p.readClues[c.id]) unfindable.push(c.id + ' in ' + box.id);
+  }
+  ok(unfindable.length === 0, 'every piece of evidence is still findable in a crate the player had emptied' +
+    (unfindable.length ? ' LOST ' + unfindable.join(', ') : ''));
+
   const wrongType = [];
   for (const c of placed) {
     const poi = w.poiById(w.containers[c.container].poi);
@@ -232,6 +247,61 @@ console.log('\n== nothing can be lost ==');
   }
   ok(wrongType.length === 0, 'every clue is still in the kind of building the journal names' +
     (wrongType.length ? ' BAD ' + wrongType.join(', ') : ''));
+}
+
+console.log('\n== an emptied crate does not pay out twice ==');
+{
+  /* Re-arming an emptied crate would hand out the same copper again, so the
+     crate keeps the state it has and only the evidence is new. */
+  const w = VG.genWorld(4242);
+  const p = VG.newPlayer(w);
+  VG.Player = p;
+  VG.INT.prepare(w);
+  for (const c of w.containers) { c.opened = true; c.loot = []; }
+  for (const f of (FIRST.facts || [])) p.knownFacts[f.id] = FIRST.id;
+  VG.conclude(FIRST, (FIRST.solutions || [])[0]);
+
+  const bag = (pl) => Object.keys(pl.inv).reduce((n, k) => n + (pl.inv[k] || 0), 0);
+  const before = bag(p);
+  for (const c of w.clues) {
+    if (c.caseId !== SECOND.id) continue;
+    VG.openContainer(w.containers[c.container], p);
+  }
+  ok(bag(p) === before, 'searching an emptied crate pays out no second helping of loot (' +
+    before + ' -> ' + bag(p) + ')');
+}
+
+console.log('\n== the placement does not depend on what you did in between ==');
+{
+  /* The picker used to avoid crates the player had emptied, so rummaging
+     shifted the next file's evidence by a crate - same building, different
+     crate - and a reloaded survey put the evidence somewhere else than the
+     player left it. The choice of crate has to be a function of the seed and
+     the file alone. */
+  const placement = (seed, rummage) => {
+    const w = VG.genWorld(seed);
+    const p = VG.newPlayer(w);
+    VG.Player = p;
+    VG.INT.prepare(w);
+    if (rummage) {
+      let n = 0;
+      for (const c of w.containers) {
+        if (n++ % 3 === 0) { c.opened = true; c.loot = []; }
+      }
+    }
+    for (const f of (FIRST.facts || [])) p.knownFacts[f.id] = FIRST.id;
+    VG.conclude(FIRST, (FIRST.solutions || [])[0]);
+    const out = {};
+    for (const c of w.clues) out[c.id] = c.container;
+    return out;
+  };
+  const clean = placement(9090, false);
+  const rummaged = placement(9090, true);
+  const moved = Object.keys(clean).filter((id) => clean[id] !== rummaged[id]);
+  ok(moved.length === 0, 'the next file lands in the same crates whether or not you emptied crates in between' +
+    (moved.length ? ' MOVED ' + moved.join(', ') : ''));
+  ok(Object.keys(rummaged).length === Object.keys(clean).length,
+    'and no evidence is lost by emptying crates in between');
 }
 
 console.log('\n== the Office asks you to answer for it ==');
@@ -258,11 +328,32 @@ console.log('\n== the Office asks you to answer for it ==');
   const live = VG.openQuestions(FIRST, p);
   ok(live.length === 1 && live[0].id === ded.id, 'the question opens when its evidence is held');
 
+  /* the Office asks the whole file at once. A question that appeared only
+     once its facts were in hand announced, by appearing, that the fact the
+     player had just read was one of its inputs. */
+  const allQs = VG.fileQuestions(FIRST, p);
+  ok(allQs.length === FIRST.deductions.length, 'the whole file\'s questions are listed from the start (' +
+    allQs.length + '/' + FIRST.deductions.length + ')');
+  ok(allQs.some((q) => !q.ready), 'and the ones you cannot answer yet are shown greyed');
+
   /* the answers are the claims of the file, not a yes/no */
   const answers = VG.caseAnswers(FIRST);
   ok(answers.length === FIRST.deductions.length, 'the player chooses between ' + answers.length + ' claims');
   ok(answers.some((a) => a.id === ded.output), 'the right answer is among them');
   ok(answers.some((a) => a.id !== ded.output), 'and so are the wrong ones');
+
+  /* the claims are not listed in the order the file is written down. They
+     used to be, which meant the first option always answered the first
+     question - a player could close the file by always picking the first
+     answer and never reading a word of it. */
+  const positions = FIRST.deductions.map((d) => {
+    const opts = VG.questionAnswers(FIRST, d.id, p);
+    return opts.findIndex((a) => a.id === d.output);
+  });
+  ok(positions.every((x) => x >= 0), 'every question\'s right answer is among its options');
+  ok(!(positions[0] === 0 && positions[1] === 1 && positions[2] === 2 && positions[3] === 3),
+    'the options are not in deduction order (' + positions.join(',') + ')');
+  ok(new Set(positions).size > 1, 'and the right answer does not sit in the same place for every question');
 
   /* a wrong theory is rejected, and it costs */
   const repBefore = p.rep.ledger || 0;
@@ -271,12 +362,17 @@ console.log('\n== the Office asks you to answer for it ==');
   ok((p.rep.ledger || 0) < repBefore, 'a rejected theory costs standing with the Ledger');
   ok(p.knownFacts[ded.output] === undefined, 'a rejected theory establishes nothing');
 
-  /* the wrong evidence is rejected the same way, and only the first mistake
-     on a question costs - the Office makes its point once */
+  /* the wrong evidence is rejected the same way, and costs the same way.
+     The Office used to charge for the first mistake on a question only and
+     then say which half of the answer was wrong - so a player could work
+     out the reading by elimination, then the evidence by elimination, and
+     pay for it once. */
   const repAfter = p.rep.ledger || 0;
   const wrong2 = VG.answerQuestion(FIRST, ded.id, ded.output, [ded.inputs[0]], p);
   ok(!wrong2.ok, 'citing the wrong evidence is rejected');
-  ok((p.rep.ledger || 0) === repAfter, 'the second mistake on the same question is free');
+  ok((p.rep.ledger || 0) < repAfter, 'and a second wrong theory costs standing too');
+  ok(wrong2.reason === wrong.reason, 'and the Office says the same thing either way (' + wrong2.reason + ')');
+  ok(!/evidence|reading|claim/i.test(wrong2.reason), 'it does not say which half of the answer was wrong');
 
   /* the right answer with the right evidence opens the fact */
   const right = VG.answerQuestion(FIRST, ded.id, ded.output, ded.inputs.slice(), p);

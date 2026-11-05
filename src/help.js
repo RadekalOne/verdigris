@@ -80,13 +80,24 @@ window.VG = window.VG || {};
     ['The lunge',
       'When one gets close it stops, and the lane it will travel down is drawn on the ground along the direction it was facing when it stopped. Step out of the lane and it misses. The lane is exactly where it will go - it is not a decoration and it does not lie. It cannot lunge again for a few seconds, so a missed lunge is a free window to shoot.'],
     ['They leave what they were made of',
-      'A rusted that goes down leaves copper, cloth, ceramic or gear; a warden leaves more, and a few rounds. The contracts ask for exactly this scrap, and the crates used to be the only place any of it came from. The flats are made of the same stuff the crates are made of.'],
+      'A rusted that goes down leaves two to eight units of scrap - copper, cloth, ceramic or gear - and about four on average. A drover leaves about the same, with glass in the pile. A warden leaves about seven, and a few rounds. The contracts ask for exactly this scrap, and the crates used to be the only place any of it came from. The flats are made of the same stuff the crates are made of.'],
     ['Your pack has a limit',
       '140 weight. A crate you cannot empty is not a limit, it is a wall - so when a crate does not fit, what does not fit stays in the crate and you come back for it. Put something down from the Field Kit to make room. The load is printed in the corner when you are carrying too much.'],
     ['Ammunition is made at a bench',
       'A bench recipe needs a bench, and a bench is a thing in a room: the depot press, the market stall, the substation bench, the fuel stop bench. Fieldcraft - a bandage, a tin of water - needs nothing but your hands. If a recipe says it needs a bench, you are not standing near one.'],
     ['The buildings that hold the evidence are watched',
       'The buildings a file points you at are not empty. Something is standing in front of them, and it holds its ground: it will not wander off across the flats and leave the door open behind it. Go in prepared.']
+  ];
+
+  /* The posts. A contract handed in from anywhere is a checklist, and a
+     checklist does not make you walk anywhere. */
+  const POSTS = [
+    ['Each faction keeps a post',
+      'The Ledger works out of the bank, The Choir out of the chapel, Free Line out of the substation. A post is marked on the map in the colour of the faction, and the contract sheet (press B) says which post a contract has to go to and how far away it is.'],
+    ['A contract is handed in at the post',
+      'You have to be standing at the building. Turn one in anywhere else and they tell you where their post is and how far it is - nothing is taken and nothing is paid, so trying from the wrong side of the flats costs you nothing but the walk.'],
+    ['Standing is the cost',
+      'A theory the Office refuses costs a point of standing with the Ledger. Reopening a file costs two. Standing decides which contracts a faction will discuss with you at all, so a point of standing is a door rather than a number - and the post is where you spend it.']
   ];
 
   /* warnings that outrank the tutorial whenever they apply */
@@ -357,6 +368,17 @@ window.VG = window.VG || {};
       h += '<table class="kvtable">';
       h += '<tr><td class="k">Rule</td><td>What it means</td></tr>';
       for (const s of FLATS) {
+        h += '<tr><td class="k">' + VG.htmlEscape(s[0]) + '</td><td>' + VG.htmlEscape(s[1]) + '</td></tr>';
+      }
+      h += '</table>';
+
+      /* the posts */
+      h += '<h3 style="color:var(--amber);font-size:12px;letter-spacing:.08em;margin:16px 0 6px">The posts</h3>';
+      h += '<p class="muted" style="font-size:11px;line-height:1.6;margin:0 0 8px">' +
+        'The factions are not menus. They are places, and a contract is handed in where the faction keeps its post.</p>';
+      h += '<table class="kvtable">';
+      h += '<tr><td class="k">Rule</td><td>What it means</td></tr>';
+      for (const s of POSTS) {
         h += '<tr><td class="k">' + VG.htmlEscape(s[0]) + '</td><td>' + VG.htmlEscape(s[1]) + '</td></tr>';
       }
       h += '</table>';

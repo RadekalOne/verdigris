@@ -336,16 +336,27 @@ window.VG = window.VG || {};
          them. A diner that might or might not have a tin in it is not a
          destination; a diner with a tin in it is. */
       const foodId = (VG.FOOD_POI && VG.FOOD_POI[p.type]) ? VG.FOOD_POI[p.type].item : null;
-      let foodPlaced = false;
+      /* A relay station keeps the Survey Office's kit, and the kit includes a
+         dust filter. The reactor yard's air will kill a surveyor who walks in
+         without one - the field there runs about six times the dose a second
+         and a man with no filter is dead in under half a minute. The Office
+         would rather the surveyor find a filter in a drawer than a grave in
+         the yard, and the relay stations are the Office's own buildings.
+         There are four of them and every file that needs the yard also needs
+         a substation, so the filter is always on the way. */
+      const kitId = p.type === 'substation' ? 'aid_filter' : null;
+      let foodPlaced = false, kitPlaced = false;
       for (let i = 0; i < n; i++) {
         const a = rng() * VG.TAU, d = rng() * (p.radius * 0.7);
         const cx = Math.round(p.x + Math.cos(a) * d), cy = Math.round(p.y + Math.sin(a) * d);
         if (!inb(cx, cy)) continue;
         const food = foodId ? (!foodPlaced ? foodId : (rng.chance(0.4) ? foodId : null)) : null;
         if (food) foodPlaced = true;
+        const kit = kitId && !kitPlaced ? kitId : null;
+        if (kit) kitPlaced = true;
         containers.push({
           id: 'c' + containers.length, x: cx, y: cy, poi: p.id, tier: p.tier,
-          opened: false, loot: null, name: null, clueId: null, food: food
+          opened: false, loot: null, name: null, clueId: null, food: food, kit: kit
         });
         p.containers.push(containers.length - 1);
       }
@@ -354,7 +365,16 @@ window.VG = window.VG || {};
       if (foodId && !foodPlaced) {
         containers.push({
           id: 'c' + containers.length, x: p.x, y: p.y, poi: p.id, tier: p.tier,
-          opened: false, loot: null, name: null, clueId: null, food: foodId
+          opened: false, loot: null, name: null, clueId: null, food: foodId, kit: kitId
+        });
+        p.containers.push(containers.length - 1);
+        kitPlaced = true;
+      }
+      /* and nor is a relay station left without its kit */
+      if (kitId && !kitPlaced) {
+        containers.push({
+          id: 'c' + containers.length, x: p.x, y: p.y, poi: p.id, tier: p.tier,
+          opened: false, loot: null, name: null, clueId: null, food: null, kit: kitId
         });
         p.containers.push(containers.length - 1);
       }
@@ -388,6 +408,18 @@ window.VG = window.VG || {};
       poiById: (id) => pois.find((p) => p.id === id)
     };
     VG.World = world;
+    /* ---- the faction posts ----
+       Marked, not built. The Ledger working out of the bank is a fact about
+       the bank, and the flats already have a bank. Marking it here means
+       every surface - the map, the compass, the contract sheet - agrees on
+       which building is which post, and agrees on it in every world built
+       from this seed. */
+    if (VG.FACTIONS && VG.postPoi) {
+      for (const f of VG.FACTIONS) {
+        const poi = VG.postPoi(world, f.id);
+        if (poi) poi.post = f.id;
+      }
+    }
     /* ---- the open file's evidence ----
        Only the file the Office is working has anything in the world. The
        rest is filed away until its turn comes, and that is what makes a
@@ -484,7 +516,12 @@ window.VG = window.VG || {};
         /* the world container index, not the position in this building's
            list - the two are not the same thing, and using the position
            put two pieces of evidence in one crate */
-        if (c && !c.clueId && !c.opened) out.push(p.containers[i]);
+        /* A crate that already holds evidence is out. A crate the player
+           has emptied is NOT: the choice of crate has to be the same every
+           time the world is built, or a reloaded survey would put the
+           evidence somewhere else than the player left it. An emptied
+           crate is re-armed instead - see below. */
+        if (c && !c.clueId) out.push(p.containers[i]);
       }
       return out;
     };
@@ -516,6 +553,17 @@ window.VG = window.VG || {};
         slot = containers.length - 1;
         host.containers.push(slot);
       }
+      /* A crate the player has already emptied cannot give its contents back,
+         and re-arming it would let the same copper be taken twice. So the
+         crate keeps the state it has: what was in it was already taken.
+
+         What the choice of crate must NOT depend on is what the player has
+         done - opening a crate must not shift where the next file's evidence
+         lands, or a reloaded survey would put it somewhere else than the
+         player left it. So the picker ignores what has been opened, and an
+         emptied crate that holds evidence stays searchable. That is the
+         promise: the file can always be closed, and the evidence is always
+         in the same place. See VG.openContainer. */
       containers[slot].clueId = cl.id;
       containers[slot].name = cl.name;
       world.clues.push({ id: cl.id, caseId: cse.id, x: host.x, y: host.y, container: slot });

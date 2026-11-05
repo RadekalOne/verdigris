@@ -60,6 +60,12 @@ window.VG = window.VG || {};
       const it = VG.item(c.food);
       if (it) out.push({ id: c.food, qty: 1 });
     }
+    /* and what the building kept of the Office's own kit - a relay station
+       keeps a dust filter, and the yard needs one */
+    if (c && c.kit) {
+      const it = VG.item(c.kit);
+      if (it) out.push({ id: c.kit, qty: 1 });
+    }
     return out;
   };
 

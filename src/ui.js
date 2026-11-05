@@ -4,6 +4,7 @@ window.VG = window.VG || {};
   'use strict';
 
   let qState = {};               // deductionId -> { answer, evidence: [] }
+  let qCur = null;               // the question the player is working on
   let invTab = 'gear';
   let jrTab = 'cases';
   let openCase = null;
@@ -263,14 +264,22 @@ window.VG = window.VG || {};
           const d = VG.dist(p.x, p.y, poi.x * VG.TILE, poi.y * VG.TILE);
           if (d < bd) { bd = d; best = poi; }
         }
+        /* The reactor yard is the one place on the map that will kill a
+           surveyor who walks in unprepared. The Office knows its own plant,
+           so the file says so rather than letting the player find out the
+           hard way - and it says where the answer is, because a warning the
+           player cannot act on is just a trap with better manners. */
+        const yardWarn = want.indexOf('reactor_yard') >= 0
+          ? '<div class="d" style="color:#c9533f;margin-top:4px">The reactor yard\'s air will kill you without a filter. The relay stations keep them.</div>'
+          : '';
         if (best) {
           const dx = best.x * VG.TILE - p.x, dy = best.y * VG.TILE - p.y;
           caseHint.innerHTML = '<div class="t">' + VG.htmlEscape(VG.poiTypeName(best.type)) + ' · ' +
             Math.round(bd) + 'm ' + VG.compassDir(dx, dy) + '</div>' +
-            '<div class="d">The file needs a ' + VG.htmlEscape(names.join(', a ')) + '. Go in and search it.</div>';
+            '<div class="d">The file needs a ' + VG.htmlEscape(names.join(', a ')) + '. Go in and search it.</div>' + yardWarn;
         } else {
           caseHint.innerHTML = '<div class="t">Looking for a ' + VG.htmlEscape(names.join(', a ')) + '</div>' +
-            '<div class="d">The Office has not charted one yet. Keep looking.</div>';
+            '<div class="d">The Office has not charted one yet. Keep looking.</div>' + yardWarn;
         }
       }
     }
@@ -603,49 +612,87 @@ window.VG = window.VG || {};
          claim they believe and the evidence they are citing for it. It
          used to be a lock with two keys in it: pick the right pair of facts
          and the engine handed you the answer, and a player who did not
-         understand the case could still get through by trying pairs. */
+         understand the case could still get through by trying pairs.
+
+         The whole file's questions are listed from the start. A question
+         used to appear only once the player held every fact it rested on,
+         which meant reading a fact announced that it was one of the inputs
+         - the Office was telling the player what to go and look for. */
       const open = VG.openCase(p);
       let h = '';
       if (!open) {
         h = '<p class="muted">No file is open. Close the file you are working and the Office opens the next one.</p>';
       } else {
-        const live = VG.openQuestions(open, p);
-        if (!live.length) {
-          h = '<p class="muted">The Office has no further questions for you. Everything it wanted out of this file, it has.</p>';
+        const qs = VG.fileQuestions(open, p);
+        if (!qs.length) {
+          h = '<p class="muted">This file asks nothing of you.</p>';
         } else {
-          const d = live[0];
-          if (!qState[d.id]) qState[d.id] = { answer: null, evidence: [] };
-          const st = qState[d.id];
-          const q = VG.questionFor(d.id) || d.label;
-          h += '<div class="cardx" style="border-color:#e8b34a">' +
-            '<h3 style="color:#e8b34a;letter-spacing:.1em">THE OFFICE ASKS</h3>' +
-            '<p style="font-size:13px;line-height:1.6;margin:6px 0 12px">' + VG.htmlEscape(q) + '</p>' +
-            '<div class="meta" style="margin-bottom:4px">YOUR ANSWER</div>';
-          for (const a of VG.caseAnswers(open)) {
-            const on = st.answer === a.id;
-            h += '<div class="listitem' + (on ? ' sel' : '') + '" data-ans="' + a.id + '"><div class="n">' +
-              VG.htmlEscape(a.label) + '</div></div>';
+          /* the whole list, from the moment the file opens */
+          h += '<div class="cardx"><h3 style="color:#e8b34a;letter-spacing:.1em">THE QUESTIONS ON THIS FILE</h3>';
+          for (let i = 0; i < qs.length; i++) {
+            const q = qs[i];
+            const tag = q.done ? 'ANSWERED' : (q.ready ? 'ANSWERABLE' : 'THE OFFICE NEEDS ' + q.missing + ' MORE FACTS');
+            h += '<div class="listitem' + (q.id === qCur ? ' sel' : '') + '" data-q="' + q.id + '"' +
+              (q.ready || q.done ? '' : ' style="opacity:.5"') + '>' +
+              '<div class="n">' + (i + 1) + '. ' + VG.htmlEscape(q.question) + '</div>' +
+              '<div class="d">' + tag + '</div></div>';
           }
-          h += '<div class="meta" style="margin:12px 0 4px">THE EVIDENCE YOU ARE CITING</div>';
-          const known = (open.facts || []).filter((f) => p.knownFacts[f.id]);
-          for (const f of known) {
-            const on = st.evidence.indexOf(f.id) >= 0;
-            h += '<div class="listitem' + (on ? ' sel' : '') + '" data-ev="' + f.id + '"><div class="n">' +
-              VG.htmlEscape(f.label) + '</div><div class="d">' + VG.htmlEscape(f.desc || '') + '</div></div>';
+          h += '<div style="height:8px"></div></div>';
+
+          /* the one being worked on */
+          let cur = qCur ? qs.find((x) => x.id === qCur) : null;
+          if (!cur) {
+            cur = qs.filter((x) => x.ready && !x.done)[0] || qs[0];
+            qCur = cur.id;
           }
-          h += '<div style="height:10px"></div><div class="btn prim" id="btn-answer">ANSWER THE OFFICE</div>' +
-            '<p class="muted" style="margin-top:6px">A theory the Office does not accept is written into the file. The first one on a question costs a point of standing with the Ledger.</p>';
-          if (live.length > 1) h += '<p class="muted">The Office has ' + live.length + ' questions waiting on this file.</p>';
+          if (cur.done) {
+            h += '<div class="cardx" style="border-color:#5c7a4a">' +
+              '<h3 style="color:#93b45a;letter-spacing:.1em">ANSWERED</h3>' +
+              '<p style="font-size:13px;line-height:1.6;margin:6px 0 0">' + VG.htmlEscape(cur.question) + '</p>' +
+              '<p class="muted" style="margin-top:6px">The Office has that one on the file.</p></div>';
+          } else if (!cur.ready) {
+            h += '<div class="cardx" style="border-color:#4a4f42">' +
+              '<h3 style="color:#8a8f7c;letter-spacing:.1em">THE OFFICE ASKS</h3>' +
+              '<p style="font-size:13px;line-height:1.6;margin:6px 0 0">' + VG.htmlEscape(cur.question) + '</p>' +
+              '<p class="muted" style="margin-top:8px">The Office does not have the evidence for this one yet. ' +
+              'It needs ' + cur.missing + ' more fact' + (cur.missing === 1 ? '' : 's') + ' before it can put it to you.</p></div>';
+          } else {
+            if (!qState[cur.id]) qState[cur.id] = { answer: null, evidence: [] };
+            const st = qState[cur.id];
+            h += '<div class="cardx" style="border-color:#e8b34a">' +
+              '<h3 style="color:#e8b34a;letter-spacing:.1em">THE OFFICE ASKS</h3>' +
+              '<p style="font-size:13px;line-height:1.6;margin:6px 0 12px">' + VG.htmlEscape(cur.question) + '</p>' +
+              '<div class="meta" style="margin-bottom:4px">YOUR ANSWER</div>';
+            for (const a of VG.questionAnswers(open, cur.id, p)) {
+              const on = st.answer === a.id;
+              h += '<div class="listitem' + (on ? ' sel' : '') + '" data-ans="' + a.id + '"><div class="n">' +
+                VG.htmlEscape(a.label) + '</div></div>';
+            }
+            h += '<div class="meta" style="margin:12px 0 4px">THE EVIDENCE YOU ARE CITING</div>';
+            const known = (open.facts || []).filter((f) => p.knownFacts[f.id]);
+            for (const f of known) {
+              const on = st.evidence.indexOf(f.id) >= 0;
+              h += '<div class="listitem' + (on ? ' sel' : '') + '" data-ev="' + f.id + '"><div class="n">' +
+                VG.htmlEscape(f.label) + '</div><div class="d">' + VG.htmlEscape(f.desc || '') + '</div></div>';
+            }
+            h += '<div style="height:10px"></div><div class="btn prim" id="btn-answer">ANSWER THE OFFICE</div>' +
+              '<p class="muted" style="margin-top:6px">A theory the Office does not accept is written into the file, and every one of them costs a point of standing with the Ledger. It will not tell you which half of your answer was wrong.</p>';
+          }
         }
       }
       body.innerHTML = h;
+      body.querySelectorAll('[data-q]').forEach((e) => {
+        e.onclick = () => {
+          qCur = e.getAttribute('data-q');
+          VG.renderJournal();
+        };
+      });
       body.querySelectorAll('[data-ans]').forEach((e) => {
         e.onclick = () => {
           const open2 = VG.openCase(p);
-          if (!open2) return;
-          const live = VG.openQuestions(open2, p);
-          if (!live.length) return;
-          const st = qState[live[0].id];
+          if (!open2 || !qCur) return;
+          const st = qState[qCur];
+          if (!st) return;
           st.answer = (st.answer === e.getAttribute('data-ans')) ? null : e.getAttribute('data-ans');
           VG.renderJournal();
         };
@@ -653,10 +700,9 @@ window.VG = window.VG || {};
       body.querySelectorAll('[data-ev]').forEach((e) => {
         e.onclick = () => {
           const open2 = VG.openCase(p);
-          if (!open2) return;
-          const live = VG.openQuestions(open2, p);
-          if (!live.length) return;
-          const st = qState[live[0].id];
+          if (!open2 || !qCur) return;
+          const st = qState[qCur];
+          if (!st) return;
           const id = e.getAttribute('data-ev');
           const i = st.evidence.indexOf(id);
           if (i >= 0) st.evidence.splice(i, 1); else st.evidence.push(id);
@@ -667,14 +713,12 @@ window.VG = window.VG || {};
       if (btn) {
         btn.onclick = () => {
           const open2 = VG.openCase(p);
-          if (!open2) return;
-          const live = VG.openQuestions(open2, p);
-          if (!live.length) return;
-          const d = live[0];
-          const st = qState[d.id];
+          if (!open2 || !qCur) return;
+          const st = qState[qCur];
+          if (!st) return;
           if (!st.answer) { VG.log('Say what you believe first.', 'bad'); return; }
           if (!st.evidence.length) { VG.log('Cite the evidence for it.', 'bad'); return; }
-          const res = VG.answerQuestion(open2, d.id, st.answer, st.evidence, p);
+          const res = VG.answerQuestion(open2, qCur, st.answer, st.evidence, p);
           if (!res.ok) {
             VG.log(res.reason + (res.cost ? ' A point of standing with the Ledger is gone.' : ''), 'bad');
             if (VG.Audio) VG.Audio.deny();
@@ -685,7 +729,10 @@ window.VG = window.VG || {};
             if (VG.Help) VG.Help.mark('deduced');
             st.answer = null;
             st.evidence = [];
-            delete qState[d.id];
+            delete qState[qCur];
+            /* move on to the next question the Office is waiting on */
+            const next = VG.fileQuestions(open2, p).filter((x) => x.ready && !x.done)[0];
+            qCur = next ? next.id : qCur;
           }
           VG.renderJournal();
         };
@@ -768,6 +815,14 @@ window.VG = window.VG || {};
       /* water is public infrastructure — the Survey Office map knows where the
          wells and the towers are, so they are on the map from the start */
       const isWater = (poi.type === 'well' || poi.type === 'watertower');
+      /* so are the faction posts. A contract whose office the map cannot
+         point at is a contract the player cannot hand in, and the posts are
+         public institutions - the Survey Office knows where the bank is. */
+      const isPost = !!poi.post;
+      /* but the post itself is a discovery: the marker appears once you have
+         been there. The contract sheet names the post and gives a bearing
+         the whole time, because the Office knows where its own counter is -
+         the map marker is for having found it, not for finding it. */
       if (!poi.discovered && !isWater) continue;
       if (isWater) {
         g.fillStyle = '#7fc4d8';
@@ -781,6 +836,21 @@ window.VG = window.VG || {};
       if (poi.tier >= 3) {
         g.strokeStyle = 'rgba(232,179,74,.5)'; g.lineWidth = 1;
         g.strokeRect(poi.x * k - 4, poi.y * k - 4, 9, 9);
+      }
+      /* a faction post is ringed in the faction's colour and named. */
+      if (isPost) {
+        const fac = (VG.FACTIONS || []).find((x) => x.id === poi.post);
+        const col = fac ? fac.color : '#e8b34a';
+        g.strokeStyle = col; g.lineWidth = 1.5;
+        g.beginPath(); g.arc(poi.x * k, poi.y * k, 6.5, 0, VG.TAU); g.stroke();
+        const label = (fac ? fac.name : 'Faction') + ' post';
+        g.font = '9px sans-serif';
+        g.textAlign = 'left';
+        g.textBaseline = 'middle';
+        g.lineWidth = 3; g.strokeStyle = '#0d100c';
+        g.strokeText(label, poi.x * k + 9, poi.y * k);
+        g.fillStyle = col;
+        g.fillText(label, poi.x * k + 9, poi.y * k);
       }
       /* a building of the kind the file needs is ringed and named. The map
          is the only place a player can look for something, so it has to
@@ -840,9 +910,16 @@ window.VG = window.VG || {};
     let h = '<h3 style="color:#e8b34a;font-size:12px;letter-spacing:.12em;margin-bottom:8px">FACTIONS</h3>';
     for (const f of (VG.FACTIONS || [])) {
       const v = p.rep[f.id] || 0;
+      /* where this faction can be found. Standing is a cost the player pays,
+         so the sheet has to say what standing is worth and where to spend it. */
+      const place = VG.postPlace ? VG.postPlace(VG.World, f.id, p) : null;
+      const where = !place ? 'post not charted'
+        : (place.here ? 'post at ' + place.name + ' - you are here'
+          : 'post at ' + place.name + ' - ' + Math.round(place.dist) + 'm ' + place.dir);
       h += '<div class="cardx" style="margin-bottom:8px"><h3 style="color:' + f.color + '">' + VG.htmlEscape(f.name) +
         ' <span class="muted" style="font-size:11px">standing ' + (v > 0 ? '+' : '') + v + '</span></h3><p>' +
-        VG.htmlEscape(f.blurb) + '</p></div>';
+        VG.htmlEscape(f.blurb) + '</p>' +
+        '<div class="meta" style="margin-top:5px">' + VG.htmlEscape(where) + '</div></div>';
     }
     h += '<div style="height:12px"></div><h3 style="color:#e8b34a;font-size:12px;letter-spacing:.12em;margin-bottom:8px">CONTRACTS</h3>';
     for (const q of (VG.QUESTS || [])) {
@@ -1018,6 +1095,19 @@ window.VG = window.VG || {};
     const p = VG.Player, body = $('#contracts-body');
     if (!body) return;
     let h = '';
+    /* The posts, once at the top: where each faction is and whether you are
+       standing at it. A contract sheet that does not say where to go is a
+       checklist, and the whole point of a post is that it is a place. */
+    h += '<div class="cardx" style="margin-bottom:10px"><h3 style="color:#e8b34a;font-size:12px;letter-spacing:.12em;margin-bottom:6px">THE POSTS</h3>';
+    for (const f of (VG.FACTIONS || [])) {
+      const place = VG.postPlace ? VG.postPlace(VG.World, f.id, p) : null;
+      const where = !place ? 'not charted'
+        : (place.here ? 'you are at ' + place.name
+          : place.name + ' - ' + Math.round(place.dist) + 'm ' + place.dir);
+      h += '<div class="meta" style="margin-bottom:3px"><span style="color:' + f.color + '">' +
+        VG.htmlEscape(f.name) + '</span> &middot; ' + VG.htmlEscape(where) + '</div>';
+    }
+    h += '</div>';
     for (const q of (VG.QUESTS || [])) {
       const f = (VG.FACTIONS || []).find((x) => x.id === q.faction);
       const repOk = (p.rep[q.faction] || 0) >= (q.repNeeded || 0);
@@ -1034,12 +1124,20 @@ window.VG = window.VG || {};
         reqTxt = 'requires ' + have + '/' + need + ' supplies';
       }
       const ready = repOk && reqOk;
+      /* a contract is handed in at the post. Standing is the only cost the
+         player pays for it, and it has to be a cost they can act on. */
+      const place = VG.postPlace ? VG.postPlace(VG.World, q.faction, p) : null;
+      const atPost = !!(place && place.here);
+      const label = !ready ? 'NOT READY' : (atPost ? 'TURN IN' : 'GO TO THE POST');
       h += '<div class="listitem"><div class="n">' + VG.htmlEscape(q.title) +
         (ready ? '<span class="tag on">ready</span>' : '<span class="tag">unavailable</span>') + '</div>' +
         '<div class="d">' + VG.htmlEscape(q.desc) + '</div>' +
         '<div class="meta">' + VG.htmlEscape(f ? f.name : q.faction) + ' · standing ' + (p.rep[q.faction] || 0) +
         (reqTxt ? ' · ' + reqTxt : '') + '</div>' +
-        '<div class="meta" style="margin-top:5px"><span class="btn' + (ready ? ' prim' : ' dis') + '" data-contract="' + q.id + '">TURN IN</span></div></div>';
+        '<div class="meta">' + (place ? (atPost ? 'at the post' : 'hand in at ' + place.name +
+          ' - ' + Math.round(place.dist) + 'm ' + place.dir) : 'post not charted') + '</div>' +
+        '<div class="meta" style="margin-top:5px"><span class="btn' + (ready && atPost ? ' prim' : ' dis') +
+        '" data-contract="' + q.id + '">' + label + '</span></div></div>';
     }
     body.innerHTML = h;
     body.querySelectorAll('[data-contract]').forEach((e) => {
@@ -1051,6 +1149,16 @@ window.VG = window.VG || {};
     const p = VG.Player;
     const q = (VG.QUESTS || []).find((x) => x.id === qid);
     if (!q) return;
+    /* the post, first. A contract that can be handed in from anywhere is a
+       checklist, and the factions have to be somewhere you have to go. */
+    const place = VG.postPlace ? VG.postPlace(VG.World, q.faction, p) : null;
+    const fac = (VG.FACTIONS || []).find((f) => f.id === q.faction);
+    if (!place) { VG.log('Nobody has charted where that post is.', 'bad'); return; }
+    if (!place.here) {
+      VG.log((fac ? fac.name : 'They') + ' will only take it at their post - ' +
+        place.name + ', ' + Math.round(place.dist) + 'm ' + place.dir + '.', 'bad');
+      return;
+    }
     if ((p.rep[q.faction] || 0) < (q.repNeeded || 0)) { VG.log('They will not deal with you.', 'bad'); return; }
     const req = q.requires || {};
     if (req.case && !(p.solvedSolutions[req.case] && p.solvedSolutions[req.case].length)) { VG.log('The file is not closed.', 'bad'); return; }

@@ -65,6 +65,17 @@ window.VG = window.VG || {};
   /* the kinds of building the open file needs */
   VG.wantedTypes = function (p) { return VG.caseWantedTypes(VG.openCase(p), p); };
 
+  /* The reactor yard is the one place on the map that kills a surveyor who
+     walks in unprepared. The Office knows its own plant, so the file says so
+     rather than letting the player find out the hard way - and it says where
+     the answer is, because a warning the player cannot act on is a trap with
+     better manners. Empty string when the file does not want the yard. */
+  VG.yardWarning = function (cse, p) {
+    const want = VG.caseWantedTypes(cse, p);
+    if (want.indexOf('reactor_yard') < 0) return '';
+    return 'The reactor yard\'s air will kill you without a filter. The relay stations keep them.';
+  };
+
   /* The journal line for a clue that has not been found. It names the kind
      of building, because that is the thing the player can act on - the raw
      data key ("search the police") is a note to self, not a lead. */
@@ -131,13 +142,74 @@ window.VG = window.VG || {};
   /* The claims the player may choose between. They are the claims the file
      itself makes, so several of them are always plausible for any one
      question - which is the point. The evidence is what settles it. */
-  VG.caseAnswers = function (cse) {
+  VG.caseAnswers = function (cse, p) {
     if (!cse) return [];
     const facts = cse.facts || [];
+    const known = (p && p.knownFacts) || {};
     const out = [];
     for (const d of (cse.deductions || [])) {
       const f = facts.find((x) => x.id === d.output);
-      if (f) out.push({ id: f.id, label: f.label, known: false });
+      if (f) out.push({ id: f.id, label: f.label, known: !!known[f.id] });
+    }
+    return out;
+  };
+
+  /* The order the claims are listed in, for one question.
+
+     They used to be listed in the order the file's deductions are written
+     down, which meant the first option always answered the first question
+     and the second option always answered the second. A player who chose
+     "the first one" on every question would have closed the file without
+     reading a word of it - the questions were a filing exercise with extra
+     steps.
+
+     Each question now has its own order. It is fixed for the life of the
+     file, so it does not shuffle under the player's hands between clicks,
+     and it does not shuffle when the survey is saved and reloaded - but it
+     is different from question to question, so there is no rule to learn. */
+  function seedOf(str) {
+    let h = 2166136261;
+    const s = String(str || '');
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+
+  VG.questionAnswers = function (cse, dedId, p) {
+    const all = VG.caseAnswers(cse, p);
+    if (all.length < 2) return all;
+    const byId = {};
+    for (const a of all) byId[a.id] = a;
+    const rng = VG.makeRng(seedOf((cse.id || '') + '|' + dedId));
+    const order = rng.shuffle(all.map((a) => a.id));
+    const out = [];
+    for (const id of order) if (byId[id]) out.push(byId[id]);
+    return out;
+  };
+
+  /* Every question the file asks, from the moment the file opens.
+
+     A question used to appear only once the player held every fact it
+     rested on - which meant that reading a fact announced, by the fact
+     showing up in the question list, that it was one of the inputs. The
+     player was being told which evidence to go and look for, and the
+     mystery was being handed over one fact at a time.
+
+     The Office asks all of its questions at once. The ones you cannot
+     answer yet are greyed, and you go and find out. */
+  VG.fileQuestions = function (cse, p) {
+    if (!cse) return [];
+    const known = (p && p.knownFacts) || {};
+    const out = [];
+    for (const d of (cse.deductions || [])) {
+      const missing = (d.inputs || []).filter((i) => !known[i]);
+      out.push({
+        ded: d,
+        id: d.id,
+        ready: missing.length === 0,
+        done: !!known[d.output],
+        missing: missing.length,
+        question: VG.questionFor(d.id) || d.label
+      });
     }
     return out;
   };
@@ -147,9 +219,16 @@ window.VG = window.VG || {};
      the evidence and not a pile of everything they happen to know.
 
      A wrong answer is a theory the Office did not accept, and the Office
-     keeps a record of those. The first mistake on a question costs a point
-     of standing with the Ledger; after that the point has been made and
-     the file is not charged for it twice. */
+     keeps a record of those. Every one of them costs a point of standing
+     with the Ledger: it used to cost a point only the first time on a
+     question, and that made the questions cheap - a player could try every
+     reading and every set of evidence and pay for it once.
+
+     The Office does not say which half of the answer was wrong. It used to,
+     and that turned the question into two independent puzzles: pick the
+     reading until the Office stopped complaining about the reading, then
+     pick the evidence until it stopped complaining about the evidence. A
+     question the player can solve by elimination is not a question. */
   VG.answerQuestion = function (cse, dedId, answerId, evidence, p) {
     if (!cse || !p) return { ok: false, reason: 'No file is open.' };
     const d = (cse.deductions || []).find((x) => x.id === dedId);
@@ -164,21 +243,14 @@ window.VG = window.VG || {};
 
     if (!rightClaim || !sameEvidence) {
       if (!p.rejectedTheories) p.rejectedTheories = {};
-      const first = !p.rejectedTheories[dedId];
       p.rejectedTheories[dedId] = (p.rejectedTheories[dedId] || 0) + 1;
-      let cost = 0;
-      if (first) {
-        cost = 1;
-        p.rep = p.rep || {};
-        p.rep.ledger = (p.rep.ledger || 0) - 1;
-      }
-      const fact = (cse.facts || []).find((x) => x.id === d.output);
+      const cost = 1;
+      p.rep = p.rep || {};
+      p.rep.ledger = (p.rep.ledger || 0) - cost;
       return {
         ok: false,
         cost: cost,
-        reason: !rightClaim
-          ? 'The Office does not accept that reading.'
-          : 'That is not the evidence for it.'
+        reason: 'The Office does not accept that theory.'
       };
     }
 

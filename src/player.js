@@ -122,8 +122,7 @@ window.VG = window.VG || {};
     return w;
   };
 
-  /* ---------- what you can carry ---------- */
-  /* A pack has a limit. Without one a crate is free, the loot is not a
+  /* ---------- what you can carry ---------- */  /* A pack has a limit. Without one a crate is free, the loot is not a
      choice, and the flats stop being dangerous in the only way that
      matters: you can take everything you walk past. */
   VG.invCanFit = function (p, id, qty) {
@@ -351,6 +350,17 @@ window.VG = window.VG || {};
     return { x: vx / mag, y: vy / mag, moving: true };
   };
 
+  /* ---------- the needs clock ---------- */
+  /* One table, used in both the outdoor and the indoor update. They used to
+     be two sets of numbers written at different times and never compared,
+     and a surveyor could walk into a diner and dry out twice as fast as he
+     did on the flats. A clock that runs at two speeds is not a clock. */
+  VG.NEED_RATE = {
+    food: 0.062, foodMove: 0.040,
+    water: 0.110, waterMove: 0.070,
+    doseDecay: 0.20
+  };
+
   /* ---------- main update ---------- */
   VG.updatePlayer = function (p, dt, input, world) {
     const sp = VG.sprint && p.stam > 2 ? p.speed * 1.62 : p.speed;
@@ -379,8 +389,8 @@ window.VG = window.VG || {};
        of walking and a tin is two. You still have to think about it - the
        flats have rations in them - but you can cross the country and come
        back. */
-    p.food = Math.max(0, p.food - (0.062 + (mv.moving ? 0.040 : 0)) * dt);
-    p.water = Math.max(0, p.water - (0.110 + (mv.moving ? 0.070 : 0)) * dt);
+    p.food = Math.max(0, p.food - (VG.NEED_RATE.food + (mv.moving ? VG.NEED_RATE.foodMove : 0)) * dt);
+    p.water = Math.max(0, p.water - (VG.NEED_RATE.water + (mv.moving ? VG.NEED_RATE.waterMove : 0)) * dt);
     if (p.food <= 0) p.hp -= 0.9 * dt;
     if (p.water <= 0) p.hp -= 1.4 * dt;
 
@@ -401,7 +411,7 @@ window.VG = window.VG || {};
     if (dYard < 46) doseRate += (46 - dYard) * 0.10;
     if (VG.weather && VG.weather.haze) doseRate += 0.75;
     if (p.inv['aid_filter'] > 0) doseRate *= 0.35;
-    p.dose = VG.clamp(p.dose + doseRate * dt - (p.dose > 0 ? 0.20 * dt : 0), 0, 100);
+    p.dose = VG.clamp(p.dose + doseRate * dt - (p.dose > 0 ? VG.NEED_RATE.doseDecay * dt : 0), 0, 100);
     if (p.dose > 48) p.hp -= (p.dose - 48) * 0.09 * dt;
     if (p.dose > 76) p.hp -= (p.dose - 76) * 0.22 * dt;
     p.hp = Math.min(p.maxhp, p.hp);
@@ -449,12 +459,12 @@ window.VG = window.VG || {};
     if (VG.sprint && mv.moving && p.stam > 0) p.stam -= 15 * dt;
     else p.stam = Math.min(100, p.stam + (mv.moving ? 5.5 : 12) * dt);
 
-    /* needs */
-    p.food = Math.max(0, p.food - (0.14 + (mv.moving ? 0.09 : 0)) * dt);
-    p.water = Math.max(0, p.water - (0.22 + (mv.moving ? 0.12 : 0)) * dt);
+    /* needs. The same clock as outdoors - see VG.NEED_RATE. */
+    p.food = Math.max(0, p.food - (VG.NEED_RATE.food + (mv.moving ? VG.NEED_RATE.foodMove : 0)) * dt);
+    p.water = Math.max(0, p.water - (VG.NEED_RATE.water + (mv.moving ? VG.NEED_RATE.waterMove : 0)) * dt);
     if (p.food <= 0) p.hp -= 0.9 * dt;
     if (p.water <= 0) p.hp -= 1.4 * dt;
-    p.dose = Math.max(0, p.dose - 0.16 * dt);
+    p.dose = Math.max(0, p.dose - VG.NEED_RATE.doseDecay * dt);
     if (p.hp < p.maxhp && p.food > 25 && p.water > 25 && p.dose < 40) {
       p.hp = Math.min(p.maxhp, p.hp + 0.85 * dt);
     }
