@@ -19,6 +19,7 @@ window.VG = window.VG || {};
       radius: 0,                  // flare radius while a torch is lit
       gold: 0,
       rep: { ledger: 0, choir: 0, free_line: 0 },
+      doneContracts: {},         // contractId -> true. A contract is settled once.
       knownFacts: {},             // factId -> caseId
       readClues: {},              // clueId -> true
       solvedSolutions: {},        // solutionId -> caseId

@@ -236,6 +236,9 @@ contract has to go to, how far away it is, and what your standing with that fact
 theory the Office refuses costs a point of standing with the Ledger; reopening a file costs two.
 That is the whole currency now, and it is a door rather than a number.
 
+A contract is settled once. Standing is a currency, and a currency you can earn the same contract
+twice is not a currency.
+
 The post is marked on the map in the faction's colour — but only once you have been there. The
 marker is for having found it; the sheet names it and gives you a bearing the whole time,
 because the Office knows where its own counter is.

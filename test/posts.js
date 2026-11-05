@@ -146,6 +146,27 @@ console.log('\n== a contract is handed in at the post, and only there ==');
   ok((p.inv.scrap_copper || 0) < need, 'and the supplies are collected');
 }
 
+console.log('\n== a contract is settled once ==');
+{
+  /* Standing is a currency now. A currency you can earn the same contract
+     twice is not a currency. */
+  const w = VG.genWorld(4242);
+  const p = VG.newPlayer(w);
+  VG.Player = p;
+  const q = (VG.QUESTS || []).find((x) => x.repNeeded === 0 && x.requires && x.requires.items);
+  const need = (VG.contractNeeds(q) || {}).scrap_copper || q.target || 1;
+  const poi = VG.postPoi(w, q.faction);
+  p.x = poi.x * VG.TILE;
+  p.y = poi.y * VG.TILE;
+  p.inv.scrap_copper = need * 2;
+  VG.turnIn(q.id);
+  const rep1 = p.rep[q.faction] || 0;
+  ok(rep1 > 0, 'the contract pays the first time');
+  VG.turnIn(q.id);
+  ok((p.rep[q.faction] || 0) === rep1, 'and it does not pay a second time');
+  ok((p.inv.scrap_copper || 0) === need, 'and the supplies are only collected once');
+}
+
 console.log('\n== the post sheet tells you where to go ==');
 {
   const w = VG.genWorld(4242);

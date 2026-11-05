@@ -1124,20 +1124,25 @@ window.VG = window.VG || {};
         reqTxt = 'requires ' + have + '/' + need + ' supplies';
       }
       const ready = repOk && reqOk;
+      /* A contract is settled once. Standing is a currency now, and a
+         currency you can earn the same contract twice is not a currency. */
+      const settled = !!(p.doneContracts && p.doneContracts[q.id]);
       /* a contract is handed in at the post. Standing is the only cost the
          player pays for it, and it has to be a cost they can act on. */
       const place = VG.postPlace ? VG.postPlace(VG.World, q.faction, p) : null;
       const atPost = !!(place && place.here);
-      const label = !ready ? 'NOT READY' : (atPost ? 'TURN IN' : 'GO TO THE POST');
+      const label = settled ? 'SETTLED' : (!ready ? 'NOT READY' : (atPost ? 'TURN IN' : 'GO TO THE POST'));
       h += '<div class="listitem"><div class="n">' + VG.htmlEscape(q.title) +
-        (ready ? '<span class="tag on">ready</span>' : '<span class="tag">unavailable</span>') + '</div>' +
+        (settled ? '<span class="tag on">settled</span>'
+          : (ready ? '<span class="tag on">ready</span>' : '<span class="tag">unavailable</span>')) + '</div>' +
         '<div class="d">' + VG.htmlEscape(q.desc) + '</div>' +
         '<div class="meta">' + VG.htmlEscape(f ? f.name : q.faction) + ' · standing ' + (p.rep[q.faction] || 0) +
         (reqTxt ? ' · ' + reqTxt : '') + '</div>' +
-        '<div class="meta">' + (place ? (atPost ? 'at the post' : 'hand in at ' + place.name +
-          ' - ' + Math.round(place.dist) + 'm ' + place.dir) : 'post not charted') + '</div>' +
+        '<div class="meta">' + (settled ? 'settled with ' + (f ? f.name : q.faction)
+          : (place ? (atPost ? 'at the post' : 'hand in at ' + place.name +
+            ' - ' + Math.round(place.dist) + 'm ' + place.dir) : 'post not charted')) + '</div>' +
         '<div class="meta" style="margin-top:5px"><span class="btn' + (ready && atPost ? ' prim' : ' dis') +
-        '" data-contract="' + q.id + '">' + label + '</span></div></div>';
+        '"' + (settled ? '' : ' data-contract="' + q.id + '"') + '>' + label + '</span></div></div>';
     }
     body.innerHTML = h;
     body.querySelectorAll('[data-contract]').forEach((e) => {
@@ -1149,6 +1154,9 @@ window.VG = window.VG || {};
     const p = VG.Player;
     const q = (VG.QUESTS || []).find((x) => x.id === qid);
     if (!q) return;
+    /* a contract is settled once. Standing is a currency now, and one you
+       can earn the same contract twice is not a currency. */
+    if (p.doneContracts && p.doneContracts[q.id]) { VG.log('That one is already settled.', 'bad'); return; }
     /* the post, first. A contract that can be handed in from anywhere is a
        checklist, and the factions have to be somewhere you have to go. */
     const place = VG.postPlace ? VG.postPlace(VG.World, q.faction, p) : null;
@@ -1173,6 +1181,8 @@ window.VG = window.VG || {};
       p.xp += q.reward.xp || 0;
     }
     p.level = 1 + Math.floor(p.xp / 250);
+    if (!p.doneContracts) p.doneContracts = {};
+    p.doneContracts[q.id] = true;
     VG.log('Contract complete: ' + q.title, 'good');
     VG.renderContracts();
   };
