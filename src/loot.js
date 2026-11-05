@@ -112,4 +112,27 @@ window.VG = window.VG || {};
     { id: 'c_flare', out: 'ammo_flare', qty: 4, need: { scrap_glass: 2, scrap_copper: 2 }, station: 'bench' },
     { id: 'c_draught', out: 'aid_chalk_draught', qty: 1, need: { scrap_ceramic: 2, scrap_glass: 1 }, station: 'bench' }
   ];
+
+  /* ---------- where you can make things ---------- */
+  /* The bench the player is standing at, if any. Fieldcraft - a bandage, a
+     tin of water - needs nothing but your hands. A bench recipe needs a
+     bench, and a bench is a thing in a room: the depot press, the market
+     stall, the substation bench, the fuel stop bench. Ammunition used to
+     be made anywhere at all, which meant the bench was never a place you
+     had to go, and the flats had nothing in them worth walking to. */
+  VG.benchAt = function (p, world) {
+    if (!p) return null;
+    if (!VG.INT || !VG.INT.active) return null;
+    const b = VG.INT.benchAtRoom(VG.INT.active.tpl);
+    if (!b) return null;
+    if (VG.dist(p.x, p.y, b.x, b.y) > 160) return null;
+    return b;
+  };
+
+  /* Can this recipe be made where the player is standing right now? */
+  VG.canCraft = function (p, r) {
+    if (!r) return false;
+    if (r.station !== 'bench') return true;
+    return !!VG.benchAt(p, VG.World);
+  };
 })(window.VG);

@@ -121,6 +121,51 @@ window.VG = window.VG || {};
     }
     return w;
   };
+
+  /* ---------- what you can carry ---------- */
+  /* A pack has a limit. Without one a crate is free, the loot is not a
+     choice, and the flats stop being dangerous in the only way that
+     matters: you can take everything you walk past. */
+  VG.invCanFit = function (p, id, qty) {
+    qty = qty || 1;
+    const it = VG.item(id);
+    const w = (it && it.w) ? it.w : 1;
+    return VG.invWeight(p) + w * qty <= VG.CARRY;
+  };
+
+  /* Take what fits and leave the rest. The caller is told both, so a crate
+     can keep what did not fit and be searched again once the player has
+     made room - nothing is lost to a full pack, it is only late. */
+  VG.takeLoot = function (p, items) {
+    const taken = [], left = [];
+    for (const l of (items || [])) {
+      const qty = l.qty || 1;
+      const it = VG.item(l.id);
+      const w = (it && it.w) ? it.w : 1;
+      const room = Math.floor((VG.CARRY - VG.invWeight(p)) / w);
+      if (room <= 0) { left.push({ id: l.id, qty: qty }); continue; }
+      if (room >= qty) {
+        VG.invAdd(p, l.id, qty);
+        taken.push({ id: l.id, qty: qty });
+      } else {
+        VG.invAdd(p, l.id, room);
+        taken.push({ id: l.id, qty: room });
+        left.push({ id: l.id, qty: qty - room });
+      }
+    }
+    return { taken: taken, left: left };
+  };
+
+  /* Put something down. A pack you cannot empty is not a limit, it is a
+     wall. */
+  VG.invDrop = function (p, id, qty) {
+    qty = qty || 1;
+    const have = p.inv[id] || 0;
+    const n = Math.min(have, qty);
+    if (n <= 0) return 0;
+    VG.invRemove(p, id, n);
+    return n;
+  };
   VG.CARRY = 140;
 
   VG.equipWeapon = function (p, id) {
@@ -328,13 +373,24 @@ window.VG = window.VG || {};
 
     /* needs. These are a clock, not a sprint: the flats are meant to be
        explored, and a survey that ends in thirty seconds of dehydration is
-       not a survey. Water is the fastest of the three. */
-    p.food = Math.max(0, p.food - (0.14 + (mv.moving ? 0.09 : 0)) * dt);
-    p.water = Math.max(0, p.water - (0.22 + (mv.moving ? 0.12 : 0)) * dt);
+       not a survey. The clocks used to run out in five minutes of walking,
+       which meant the flats could not be crossed and the whole survey had
+       to happen in one held breath. Now a canteen is a working day's worth
+       of walking and a tin is two. You still have to think about it - the
+       flats have rations in them - but you can cross the country and come
+       back. */
+    p.food = Math.max(0, p.food - (0.062 + (mv.moving ? 0.040 : 0)) * dt);
+    p.water = Math.max(0, p.water - (0.110 + (mv.moving ? 0.070 : 0)) * dt);
     if (p.food <= 0) p.hp -= 0.9 * dt;
     if (p.water <= 0) p.hp -= 1.4 * dt;
 
-    /* dose: reactor yard, ash storms, and the refinery perimeter */
+    /* dose: reactor yard, ash storms, and the refinery perimeter.
+       The yard is where three of the files keep their evidence, so it has
+       to be a place you go and come back from, not a place that ends you.
+       The field around it is stronger than it was and the harm starts
+       earlier - you feel it before it finishes you, and the survey dust
+       filter is what makes the yard survivable rather than merely
+       survivable for a while. */
     const tx = Math.floor(p.x / VG.TILE), ty = Math.floor(p.y / VG.TILE);
     const b = world.biomeAt(tx, ty);
     const dYard = VG.dist(tx, ty, world.yard.x, world.yard.y);
@@ -342,12 +398,12 @@ window.VG = window.VG || {};
     if (b === VG.BIOME.indexOf(VG.BIOME.find((z) => z.key === 'refinery'))) doseRate = 1.9;
     else if (b === VG.BIOME.indexOf(VG.BIOME.find((z) => z.key === 'salt'))) doseRate = 0.30;
     else if (b === VG.BIOME.indexOf(VG.BIOME.find((z) => z.key === 'dune'))) doseRate = 0.16;
-    if (dYard < 46) doseRate += (46 - dYard) * 0.075;
+    if (dYard < 46) doseRate += (46 - dYard) * 0.10;
     if (VG.weather && VG.weather.haze) doseRate += 0.75;
     if (p.inv['aid_filter'] > 0) doseRate *= 0.35;
-    p.dose = VG.clamp(p.dose + doseRate * dt - (p.dose > 0 ? 0.16 * dt : 0), 0, 100);
-    if (p.dose > 55) p.hp -= (p.dose - 55) * 0.09 * dt;
-    if (p.dose > 82) p.hp -= (p.dose - 82) * 0.22 * dt;
+    p.dose = VG.clamp(p.dose + doseRate * dt - (p.dose > 0 ? 0.20 * dt : 0), 0, 100);
+    if (p.dose > 48) p.hp -= (p.dose - 48) * 0.09 * dt;
+    if (p.dose > 76) p.hp -= (p.dose - 76) * 0.22 * dt;
     p.hp = Math.min(p.maxhp, p.hp);
     if (p.hp <= 0 && VG.onDeath) VG.onDeath('exposure');
 
@@ -485,11 +541,48 @@ window.VG = window.VG || {};
     if (mods.indexOf('rapid') >= 0) cd *= 0.85;
     return VG.clamp(cd, 0.16, 1.2);
   };
+  /* ---------- how the flats move ---------- */
+  /* The Rusted used to walk at 66, half the player's pace. That meant
+     nothing on the flats could ever catch you, the survey was a walk in a
+     park, and a health bar was decoration. They are faster than a walking
+     player now.
+
+     The numbers are close together on purpose. A rusted closes on a
+     walking player at six pixels a second - slow enough that you can feel
+     it happening and cannot walk it off. The lunge is what actually takes
+     ground back, and the lunge is dodgeable, so the answer is never "run
+     forever". A sprint still outruns every one of them, but a sprint is
+     not a thing you can do for four minutes. */
+  VG.ENEMY_SPEED = { rusted: 138, warden: 152, drover: 170 };
+
+  VG.enemySpeed = function (kind) {
+    return VG.ENEMY_SPEED[kind] || VG.ENEMY_SPEED.rusted;
+  };
+
+  /* The lunge. The windup is the whole of it: the Rusted stops, and the
+     lane it will travel down is drawn on the ground along the direction it
+     was facing when it stopped. Walk out of the lane and it misses. A
+     lunge you cannot dodge is not a threat, it is a tax. */
+  VG.LUNGE = {
+    windup: 0.55,   /* how long the tell is on the ground */
+    range: 120,     /* how close it has to be to start one */
+    speed: 420,     /* how fast the lane is travelled */
+    dist: 130,      /* how far down the lane it goes */
+    time: 0.55,     /* and how long it is allowed to take */
+    cd: 2.4         /* and how long before it tries again */
+  };
+
   /* how far off the Rusted notice you. A silenced weapon does not carry. */
   VG.aggroRange = function (p) {
     const w = VG.playerWeapon(p);
-    if (w && (w.mods || []).indexOf('silenced') >= 0) return 120;
-    return 240;
+    const silenced = !!(w && (w.mods || []).indexOf('silenced') >= 0);
+    /* After dark they see further. The flats are lit by whatever is left
+       of the mast and the town, and the same thing that lets you work
+       the country at night is the thing that makes you easier to find.
+       It is also the reason a long gun matters: most of them do not reach
+       as far as a night look. */
+    const night = !!(VG.state && VG.isNight && VG.isNight(VG.state.time));
+    return silenced ? (night ? 150 : 120) : (night ? 300 : 240);
   };
   /* A shot is a noise. The Rusted hear it, and a noise tells them where
      you are. Without this, firing at something that has not noticed you yet

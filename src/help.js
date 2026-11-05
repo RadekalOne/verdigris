@@ -71,6 +71,24 @@ window.VG = window.VG || {};
       'Chalk Draught (-20), Saline Stim (-6), Surgical Tray (-12). Carry a Survey Dust Filter and it builds a third as fast.']
   ];
 
+  /* What the flats do back. These are the rules a player would otherwise
+     have to learn by being hit by them: the tell, the drop, the pack, and
+     the bench. */
+  const FLATS = [
+    ['The Rusted are faster than you walk',
+      'A rusted walks at 138, a warden at 152, a drover at 170. You walk at 132 and sprint at 205 - so a sprint outruns every one of them, but a sprint is not a thing you can do for four minutes. You can also fight, or break the line of sight. Standing still is not one of the options.'],
+    ['The lunge',
+      'When one gets close it stops, and the lane it will travel down is drawn on the ground along the direction it was facing when it stopped. Step out of the lane and it misses. The lane is exactly where it will go - it is not a decoration and it does not lie. It cannot lunge again for a few seconds, so a missed lunge is a free window to shoot.'],
+    ['They leave what they were made of',
+      'A rusted that goes down leaves copper, cloth, ceramic or gear; a warden leaves more, and a few rounds. The contracts ask for exactly this scrap, and the crates used to be the only place any of it came from. The flats are made of the same stuff the crates are made of.'],
+    ['Your pack has a limit',
+      '140 weight. A crate you cannot empty is not a limit, it is a wall - so when a crate does not fit, what does not fit stays in the crate and you come back for it. Put something down from the Field Kit to make room. The load is printed in the corner when you are carrying too much.'],
+    ['Ammunition is made at a bench',
+      'A bench recipe needs a bench, and a bench is a thing in a room: the depot press, the market stall, the substation bench, the fuel stop bench. Fieldcraft - a bandage, a tin of water - needs nothing but your hands. If a recipe says it needs a bench, you are not standing near one.'],
+    ['The buildings that hold the evidence are watched',
+      'The buildings a file points you at are not empty. Something is standing in front of them, and it holds its ground: it will not wander off across the flats and leave the door open behind it. Go in prepared.']
+  ];
+
   /* warnings that outrank the tutorial whenever they apply */
   const ALERTS = [
     { text: 'Your water is low. The panel on the right points at the nearest well — press R there to drink, or use a canteen from the Field Kit.', when: (p) => p.water <= 40 },
@@ -86,7 +104,7 @@ window.VG = window.VG || {};
     ['Aiming', 'The mouse is your aim. The reticle sits under the cursor and the round goes exactly there — there is no spread, so if the reticle is on something, you hit it. Your figure turns to face where you are pointing.'],
     ['Firing', 'Left click fires. Hold the mouse down to keep firing at the weapon\'s rate of fire. The number on the weapon in the hotbar is the rounds it has left.'],
     ['Reach', 'A round lives exactly as long as the weapon\'s reach, so the revolver you start with covers 280 metres of flats and a marksman covers 400. Point at something beyond that and the round dies in the air. The hotbar and the Field Kit both print the reach, so you can read it before you shoot rather than after.'],
-    ['The notice radius', 'The Rusted see you at 240 metres. Every gun reaches at least that far, so a gun is never a thing you can only use at arm\'s length — but a longer gun lets you open a fight from further out than they can see you.'],
+    ['The notice radius', 'The Rusted see you at 240 metres by day and 300 after dark. Every gun reaches at least as far as the daytime look, so a gun is never a thing you can only use at arm\'s length — but a longer gun lets you open a fight from further out than they can see you. After dark most guns no longer do: the dark is for working, not for standing still. A silenced weapon carries to 120, or 150 after dark.'],
     ['Swinging', 'The torch and the pick mace are swung, not fired. A swing is a short arc in front of you, drawn where it lands. They need no ammunition. The torch burns in the pack as well as in your hand, so you are never without light because you picked up a gun.'],
     ['Ammunition', 'Rounds are pooled by type and shared between the guns that take them. Craft them at the workbench, or find them. Out of ammunition and the weapon says so.'],
     ['Noise', 'A shot carries as far as the round flies, so firing is how a fight starts and not only how it ends. Silenced weapons do not bring the Rusted the way the others do.']
@@ -329,6 +347,17 @@ window.VG = window.VG || {};
       for (const s of SURVIVAL) {
         h += '<tr><td class="k">' + VG.htmlEscape(s[0]) + '</td><td>' + VG.htmlEscape(s[1]) +
           '<br><span style="color:#93b45a">Put it back:</span> ' + VG.htmlEscape(s[2]) + '</td></tr>';
+      }
+      h += '</table>';
+
+      /* the flats push back */
+      h += '<h3 style="color:var(--amber);font-size:12px;letter-spacing:.08em;margin:16px 0 6px">The flats push back</h3>';
+      h += '<p class="muted" style="font-size:11px;line-height:1.6;margin:0 0 8px">' +
+        'The flats are not a place you walk through. These are the rules you would otherwise have to learn by being hit by them.</p>';
+      h += '<table class="kvtable">';
+      h += '<tr><td class="k">Rule</td><td>What it means</td></tr>';
+      for (const s of FLATS) {
+        h += '<tr><td class="k">' + VG.htmlEscape(s[0]) + '</td><td>' + VG.htmlEscape(s[1]) + '</td></tr>';
       }
       h += '</table>';
 

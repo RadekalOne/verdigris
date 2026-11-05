@@ -384,7 +384,8 @@ window.VG = window.VG || {};
         hp: k === 'warden' ? 120 : k === 'drover' ? 46 : 70,
         dmg: k === 'warden' ? 17 : k === 'drover' ? 9 : 12,
         r: 11, aggro: 0, dead: false, raid: true,
-        home: { x: tx, y: ty }, loot: null
+        home: { x: tx, y: ty }, loot: null,
+        windup: 0, lunge: 0, lungeT: 0, lungeCd: 0, lungeAng: 0
       };
       world.enemies.push(e);
       made.push(e);

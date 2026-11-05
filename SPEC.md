@@ -170,5 +170,8 @@ Rules:
 - The engine surfaces `cases[].facts` in the Journal as **Evidence**, `cases[].deductions` as **Deductions** the player can assemble, and `cases[].solutions` as **Conclusions**. A file with more than one solution is a fork: the player files the reading they believe, and may reopen the file later (at a cost) to file the other one.
 - Nothing in the engine mutates your objects except `reward.rep` values.
 - Do not reference `chapter` for gating logic — the engine handles the file order and the chapter unlocks. `chapter` is a label the Journal prints.
+- The flats push back, and the push is in the engine, not in your data: `VG.ENEMY_SPEED` (rusted 138, warden 152, drover 170, against a player walk of 132 and a sprint of 205), `VG.LUNGE` (the windup, the range, the speed, the distance and the cooldown of the telegraphed lunge), `VG.aggroRange(p)` (240 by day, 300 at night), `VG.CARRY` (140 load). A kill pays out through `VG.ENEMY_DROP` and respects the pack; a recipe with `station: 'bench'` needs a bench in the room the player is standing in.
+- Placing a file also puts a **guard** on the building that holds its evidence (`VG.spawnGuard`). The guard's id is `g_<clueId>_<poiId>` so a save file can remember that you already killed it. Do not add guard data to the case files — the guard belongs to the evidence, and the evidence is what moves.
+- A file is placed in the world **once** (`world.casesPlaced`). Placing it twice would scatter a second copy of its evidence into a second building.
 
 **Output style:** plain ES5-compatible JS, `var`/`const` is fine, 2-space indent, one trailing newline, no comments longer than one line. Total file size under 60 KB each.

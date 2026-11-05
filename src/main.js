@@ -135,33 +135,44 @@ window.VG = window.VG || {};
 
   VG.openContainer = function (c, p) {
     if (c.opened) return;
-    c.opened = true;
-    p.containersOpened++;
-    if (VG.DYN) VG.DYN.addHeat(0.18);
-    if (VG.Audio) VG.Audio.open();
-    if (VG.Help) VG.Help.mark('searched');
-    /* The seed must be different for every crate, including the ones that
-       have moved indoors. Two crates in the same building used to share a
-       tile position and therefore shared a seed, which handed out the same
-       loot twice. */
-    const seedIn = c.inside ? ((c.ix * 2654435761) ^ (c.iy * 40503) ^ (c.id.charCodeAt(1) * 2246822519)) : 0;
-    const rng = VG.makeRng((VG.World.seed ^ (c.x * 73856093) ^ (c.y * 19349663) ^ seedIn) >>> 0);
-    // surprise find
-    if (rng.chance(VG.SURPRISE.chance(c.tier))) {
-      const s = VG.SURPRISE.pick(rng);
-      if (s) {
-        VG.invAdd(p, s.id, 1);
-        VG.log('SURPRISE FIND: ' + s.name + ' — ' + s.desc, 'clue');
-        if (VG.Audio) VG.Audio.surprise();
+    /* The first time a crate is searched, its contents are decided and kept.
+       A crate that did not fit in the pack stays worth searching, so the
+       loot has to be the same loot the second time. */
+    const first = !c.loot;
+    if (first) {
+      p.containersOpened++;
+      if (VG.DYN) VG.DYN.addHeat(0.18);
+      if (VG.Audio) VG.Audio.open();
+      if (VG.Help) VG.Help.mark('searched');
+      /* The seed must be different for every crate, including the ones that
+         have moved indoors. Two crates in the same building used to share a
+         tile position and therefore shared a seed, which handed out the same
+         loot twice. */
+      const seedIn = c.inside ? ((c.ix * 2654435761) ^ (c.iy * 40503) ^ (c.id.charCodeAt(1) * 2246822519)) : 0;
+      const rng = VG.makeRng((VG.World.seed ^ (c.x * 73856093) ^ (c.y * 19349663) ^ seedIn) >>> 0);
+      // surprise find
+      if (rng.chance(VG.SURPRISE.chance(c.tier))) {
+        const s = VG.SURPRISE.pick(rng);
+        if (s) c.surprise = { id: s.id, name: s.name, desc: s.desc };
       }
+      c.loot = VG.rollContainerLoot(c, rng);
     }
-    const loot = c.loot || VG.rollContainerLoot(c, rng);
-    c.loot = loot;
+
+    /* take what fits. What does not fit stays in the crate, because a pack
+       you cannot empty is not a limit, it is a wall - and losing loot to a
+       full pack is worse than having to come back for it. */
+    const res = VG.takeLoot(p, c.loot);
+    c.loot = res.left;
     let lines = [];
-    for (const l of loot) {
-      VG.invAdd(p, l.id, l.qty);
+    for (const l of res.taken) {
       const it = VG.item(l.id);
       lines.push((it ? it.name : l.id) + (l.qty > 1 ? ' x' + l.qty : ''));
+    }
+    if (c.surprise && VG.invCanFit(p, c.surprise.id, 1)) {
+      VG.invAdd(p, c.surprise.id, 1);
+      VG.log('SURPRISE FIND: ' + c.surprise.name + ' — ' + c.surprise.desc, 'clue');
+      if (VG.Audio) VG.Audio.surprise();
+      c.surprise = null;
     }
     if (lines.length) {
       VG.log('Searched: ' + lines.join(', '), 'good');
@@ -169,9 +180,16 @@ window.VG = window.VG || {};
     }
     else VG.log('Nothing but dust.', '');
 
+    if (res.left.length || c.surprise) {
+      c.partial = true;
+      VG.log('Your pack is full. ' + (res.left.length ? 'The rest is still in the crate.' : 'Something else is in there.'), 'bad');
+    } else {
+      c.opened = true;
+    }
+
     if (c.clueId) {
       const cl = VG.findClue(c.clueId);
-      if (cl) {
+      if (cl && !p.readClues[cl.id]) {
         p.readClues[cl.id] = true;
         const cse = VG.allCases().find((x) => x.id === cl.caseId);
         p.knownFacts[cl.fact] = cl.caseId;
@@ -367,7 +385,7 @@ window.VG = window.VG || {};
         if (da > 1.1) continue;
         e.hp -= dmg; hit = true; e.flash = 0.16;
         VG.markHit(e.x * VG.TILE, e.y * VG.TILE, dmg);
-        if (e.hp <= 0) { e.dead = true; p.killed++; if (VG.DYN) VG.DYN.addHeat(1.2); VG.log('A ' + e.kind + ' goes down.', 'good'); }
+        if (e.hp <= 0) VG.killEnemy(e, p);
       }
       if (hit) { if (VG.Audio) VG.Audio.hit(); VG.log('Strike for ' + Math.round(dmg) + '.', 'good'); }
       return;
@@ -438,7 +456,7 @@ window.VG = window.VG || {};
           e.hp -= b.dmg; gone = true; e.flash = 0.16;
           VG.markHit(ex, ey, b.dmg);
           if (VG.Audio) VG.Audio.hit();
-          if (e.hp <= 0) { e.dead = true; p.killed++; if (VG.DYN) VG.DYN.addHeat(1.2); VG.log('A ' + e.kind + ' goes down.', 'good'); }
+          if (e.hp <= 0) VG.killEnemy(e, p);
           break;
         }
       }
@@ -459,25 +477,111 @@ window.VG = window.VG || {};
       if (d < notice) e.aggro = 2.2;
       else e.aggro = Math.max(0, e.aggro - dt);
       if (e.aggro > 0) {
-        const s = e.kind === 'drover' ? 92 : e.kind === 'warden' ? 74 : 66;
-        const ux = (p.x - ex) / (d || 1), uy = (p.y - ey) / (d || 1);
-        e.x += ux * s * dt / VG.TILE;
-        e.y += uy * s * dt / VG.TILE;
-        if (d < e.r + p.r + 6 && p.lastDamage < performance.now() - 900) {
-          VG.damagePlayer(p, e.dmg, e.kind);
-          VG.log('Hit by a ' + e.kind + '.', 'bad');
+        /* The lunge. A rusted used to walk at half the player's pace, which
+           meant nothing on the flats could ever catch you and the survey
+           was a walk in a park. They are faster than a walking player now,
+           so you have to sprint, fight, or break the line of sight - and
+           the lunge is the thing that makes sprinting necessary, because
+           sprinting is not a thing you can do for four minutes.
+
+           The windup is the whole point: the rusted stops, and the lane it
+           will travel down is drawn on the ground, along the direction it
+           was facing when it stopped. Walk out of the lane and it misses.
+           A lunge you cannot dodge is not a threat, it is a tax. */
+        if (e.windup > 0) {
+          e.windup -= dt;
+          if (e.windup <= 0) { e.lunge = VG.LUNGE.time; e.lungeT = 0; }
+        } else if (e.lunge > 0) {
+          e.lunge -= dt;
+          /* lungeT counts the ground actually covered, so the lane the
+             player was shown and the distance the Rusted travels are the
+             same number. It used to be advanced twice per frame, which
+             meant the lunge covered its whole lane in half the time it
+             was telegraphed. */
+          const step = Math.min(VG.LUNGE.speed * dt, Math.max(0, VG.LUNGE.dist - e.lungeT));
+          e.lungeT += step;
+          e.x += Math.cos(e.lungeAng) * step / VG.TILE;
+          e.y += Math.sin(e.lungeAng) * step / VG.TILE;
+          const ld = VG.dist(p.x, p.y, e.x * VG.TILE, e.y * VG.TILE);
+          if (ld < e.r + p.r + 4 && p.lastDamage < performance.now() - 900) {
+            VG.damagePlayer(p, e.dmg, e.kind);
+            VG.log('It lunges. Hit by a ' + e.kind + '.', 'bad');
+          }
+          if (e.lungeT >= VG.LUNGE.dist || e.lunge <= 0) { e.lunge = 0; e.lungeCd = VG.LUNGE.cd; }
+        } else {
+          const s = VG.enemySpeed(e.kind);
+          const ux = (p.x - ex) / (d || 1), uy = (p.y - ey) / (d || 1);
+          e.x += ux * s * dt / VG.TILE;
+          e.y += uy * s * dt / VG.TILE;
+          e.lungeCd = Math.max(0, (e.lungeCd || 0) - dt);
+          if (d < VG.LUNGE.range && e.lungeCd <= 0 && p.lastDamage < performance.now() - 900) {
+            e.windup = VG.LUNGE.windup;
+            e.lungeAng = Math.atan2(p.y - ey, p.x - ex);
+            e.lungeT = 0;
+          }
+          if (d < e.r + p.r + 6 && p.lastDamage < performance.now() - 900) {
+            VG.damagePlayer(p, e.dmg, e.kind);
+            VG.log('Hit by a ' + e.kind + '.', 'bad');
+          }
         }
       } else {
-        // wander near home
+        /* a guard holds its post. It was put on a building because that
+           building holds the evidence the player has to go and find, and a
+           guard that wandered off into the desert would be no guard at all. */
+        const home = e.guardPoi ? e.guardHome : e.home;
         if (Math.random() < 0.004) {
           e.wx = (Math.random() - 0.5) * 0.8;
           e.wy = (Math.random() - 0.5) * 0.8;
         }
-        e.x += (e.wx || 0) * 24 * dt / VG.TILE;
-        e.y += (e.wy || 0) * 24 * dt / VG.TILE;
-        if (VG.dist(e.x, e.y, e.home.x, e.home.y) > 6) { e.x = e.home.x; e.y = e.home.y; }
+        const speed = e.guardPoi ? 10 : 24;
+        e.x += (e.wx || 0) * speed * dt / VG.TILE;
+        e.y += (e.wy || 0) * speed * dt / VG.TILE;
+        const leash = e.guardPoi ? 5.5 : 6;
+        if (VG.dist(e.x, e.y, home.x, home.y) > leash) { e.x = home.x; e.y = home.y; }
       }
     }
+  };
+
+  /* ---------- what they leave behind ---------- */
+  /* The economy runs on scrap, and nothing on the flats was a source of
+     it. Every contract wants copper, ceramic, cloth or gear, and every
+     one of them had to be found in a crate. The things that walk around
+     the flats are made of the same stuff the crates are made of, and a
+     survey that goes out on the flats should come back with something. */
+  VG.ENEMY_DROP = {
+    rusted: [['scrap_copper', 1, 3], ['scrap_cloth', 1, 2], ['scrap_ceramic', 1, 2], ['scrap_gear', 1, 1]],
+    drover: [['scrap_gear', 1, 2], ['scrap_copper', 1, 3], ['scrap_glass', 1, 1]],
+    warden: [['scrap_copper', 2, 4], ['scrap_gear', 1, 2], ['ammo_slug', 2, 6]]
+  };
+
+  VG.enemyDrop = function (e) {
+    const table = VG.ENEMY_DROP[e.kind] || VG.ENEMY_DROP.rusted;
+    const rng = VG.makeRng((VG.World.seed ^ (e.x * 7919) ^ (e.y * 104729) ^ (e.id.length * 31)) >>> 0);
+    const out = [];
+    const n = e.kind === 'warden' ? rng.int(2, 3) : rng.int(1, 2);
+    for (let i = 0; i < n; i++) {
+      const pick = rng.pick(table);
+      out.push({ id: pick[0], qty: rng.int(pick[1], pick[2]) });
+    }
+    return out;
+  };
+
+  /* A thing that dies pays out, and the pack still has a limit. */
+  VG.killEnemy = function (e, p) {
+    if (!e || e.dead) return;
+    e.dead = true;
+    p.killed++;
+    if (VG.DYN) VG.DYN.addHeat(1.2);
+    VG.log('A ' + e.kind + ' goes down.', 'good');
+    const drop = VG.enemyDrop(e);
+    const res = VG.takeLoot(p, drop);
+    const parts = [];
+    for (const l of res.taken) {
+      const it = VG.item(l.id);
+      parts.push((it ? it.name : l.id) + (l.qty > 1 ? ' x' + l.qty : ''));
+    }
+    if (parts.length) VG.log('You take from it: ' + parts.join(', '), 'good');
+    if (res.left.length) VG.log('Your pack will not hold the rest.', 'bad');
   };
 
   VG.onDeath = function (cause) {
@@ -609,6 +713,7 @@ window.VG = window.VG || {};
         const c = target.obj;
         pr.style.display = 'block';
         pr.innerHTML = 'E — search ' + (c.clueId ? '<b>something labelled</b>' : 'the container') +
+          (c.partial ? ' <span class="muted">· there is more in it</span>' : '') +
           (water ? ' <span class="muted">· R — draw water</span>' : '');
       } else if (target && target.kind === 'poi') {
         const poi = target.obj;

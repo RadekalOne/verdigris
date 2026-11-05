@@ -92,11 +92,14 @@ window.VG = window.VG || {};
       f('desk', 190, 200, 120, 42), f('console', 330, 200, 120, 38),
       f('machine', 510, 60, 72, 86), f('tank', 510, 190, 62, 70),
       f('crate', 50, 110, 30, 28), f('crate', 50, 146, 30, 28), f('crate', 86, 146, 30, 28),
-      f('pipe', 70, 290, 180, 12), f('valve', 150, 268, 28, 28)
+      f('pipe', 70, 290, 180, 12), f('valve', 150, 268, 28, 28),
+      f('bench', 466, 244, 58, 26)
     ],
     lights: [{ x: 300, y: 120, r: 210, c: '#e8b24a', i: 0.50 }],
     windows: [],
     loot: [[215, 220], [385, 219], [545, 100], [66, 126]],
+    bench: [486, 248],
+    benchName: 'substation bench',
     flavour: 'The door is swollen shut. Inside, the hum is still on. Something is still drawing power, and it is not the wind.'
   });
 
@@ -200,7 +203,8 @@ window.VG = window.VG || {};
       f('crate', 540, 60, 40, 38), f('crate', 590, 60, 40, 38), f('crate', 540, 110, 40, 38),
       f('barrel', 600, 160, 26, 26),
       f('freezer', 60, 220, 90, 58), f('scale', 120, 300, 30, 26),
-      f('crate', 50, 60, 36, 34), f('crate', 50, 300, 36, 34)
+      f('crate', 50, 60, 36, 34), f('crate', 50, 300, 36, 34),
+      f('bench', 462, 296, 58, 26)
     ],
     lights: [
       { x: 300, y: 130, r: 250, c: '#e8b24a', i: 0.50 },
@@ -208,6 +212,8 @@ window.VG = window.VG || {};
     ],
     windows: [{ x: 460, y: 0, w: 160, h: 14 }],
     loot: [[223, 110], [270, 268], [565, 80], [100, 250]],
+    bench: [482, 300],
+    benchName: 'market stall bench',
     flavour: 'The market hall. Four aisles of shelving, and a freezer with a padlock on it that was never locked.'
   });
 
@@ -287,7 +293,8 @@ window.VG = window.VG || {};
       f('desk', 600, 200, 120, 44), f('cabinet', 600, 280, 60, 70),
       f('locker', 50, 200, 120, 24),
       f('tank', 200, 300, 70, 90), f('crate', 310, 330, 44, 40),
-      f('scale', 420, 370, 44, 32), f('platform', 250, 210, 280, 54)
+      f('scale', 420, 370, 44, 32), f('platform', 250, 210, 280, 54),
+      f('bench', 450, 296, 58, 26)
     ],
     lights: [
       { x: 380, y: 180, r: 300, c: '#e8b24a', i: 0.45 },
@@ -295,6 +302,8 @@ window.VG = window.VG || {};
     ],
     windows: [{ x: 640, y: 0, w: 120, h: 14 }],
     loot: [[260, 90], [660, 220], [630, 315], [332, 350]],
+    bench: [470, 300],
+    benchName: 'depot press bench',
     flavour: 'The freight depot. Pallets, a dock, and a scale that still weighs things nobody has shipped in forty years.'
   });
 
@@ -392,11 +401,14 @@ window.VG = window.VG || {};
       f('desk', 50, 160, 100, 38), f('chair', 160, 168, 18, 18),
       f('cabinet', 220, 50, 48, 58),
       f('crate', 320, 190, 34, 32), f('barrel', 320, 100, 26, 26),
-      f('shelf', 220, 190, 22, 70)
+      f('shelf', 220, 190, 22, 70),
+      f('bench', 278, 126, 58, 26)
     ],
     lights: [{ x: 170, y: 120, r: 160, c: '#e8b24a', i: 0.50 }],
     windows: [{ x: 40, y: 0, w: 100, h: 14 }],
     loot: [[110, 105], [85, 180], [244, 80], [338, 206]],
+    bench: [298, 130],
+    benchName: 'fuel stop bench',
     flavour: 'The fuel stop office. A window onto the pumps, a register, and a cup that somebody left in the drawer.'
   });
 
@@ -621,6 +633,13 @@ window.VG = window.VG || {};
       }
     }
     return moved;
+  };
+
+  /* The workbench. A recipe that needs a bench is made at one, and a bench
+     is a place you walk to - the flats do not keep a bench in your pack. */
+  INT.benchAtRoom = function (tpl) {
+    if (!tpl || !tpl.bench) return null;
+    return { x: tpl.bench[0], y: tpl.bench[1], name: tpl.benchName || 'workbench' };
   };
 
   /* ---- entering and leaving ---- */

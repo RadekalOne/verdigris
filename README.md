@@ -181,9 +181,36 @@ You start with a scavenger's torch and six rivet coins. Everything else you find
 | **Long Marksman** | 340 | 0.96s | heavy, accurate | The furthest thing you can carry. |
 
 **What is not in here yet:** no magazines or reload timing, no way to modify a weapon at the
-workbench, no aiming down sights, and no dodging. The combat loop is deliberately plain — you
+workbench, and no aiming down sights. The combat loop is deliberately plain — you
 pick the right tool for the distance, you manage the ammunition, and you keep your distance from
 the Wardens. That is a fine small system, but it is a small one.
+
+## The flats push back
+
+The flats used to be a place you could walk through. Everything that lived on them moved at
+half your pace, so nothing could ever catch you, the survival clocks ran out in five minutes,
+and a pack with no limit meant the loot never cost anything to take. That is a park with a
+health bar. It is not the game.
+
+| Rule | What it means in play |
+|---|---|
+| **They are faster than you walk** | A rusted walks at 138, a warden at 152, a drover at 170. You walk at 132 and sprint at 205. A sprint outruns every one of them, but a sprint is not a thing you can do for four minutes — so the answer is to sprint, or fight, or break the line of sight. Standing still is not one of the options. |
+| **The lunge** | Close in, and one stops. The lane it will travel down is drawn on the ground along the direction it was facing when it stopped, and the lane is exactly where it will go. Step out of it and it misses. It cannot lunge again for a few seconds, so a missed lunge is a free window to shoot. |
+| **They leave what they were made of** | A rusted that goes down leaves copper, cloth, ceramic or gear; a warden leaves more, and a few rounds. The contracts ask for exactly this scrap, and the crates used to be the only place any of it came from. |
+| **Your pack has a limit** | 140 weight. What does not fit in a crate **stays in the crate** — nothing is lost to a full pack, it is only late — and you can put something down from the Field Kit to make room. |
+| **Ammunition is made at a bench** | A bench recipe needs a bench, and a bench is a thing in a room: the depot press, the market stall, the substation bench, the fuel stop bench. Fieldcraft — a bandage, a tin of water — needs nothing but your hands. |
+| **The evidence is watched** | The buildings a file points you at are not empty. Something is standing in front of them, and it holds its ground rather than wandering off across the flats. |
+| **The dark helps them** | The Rusted see you at 240 metres by day and 300 after dark. Most guns no longer reach that far at night, so the dark is for working, not for standing still. |
+| **The yard bites** | The reactor yard's dose field is stronger and starts costing you health earlier. Three of the files keep their evidence in there. A survey dust filter is what makes it survivable rather than merely survivable for a while. |
+
+The clocks were lengthened at the same time: a canteen is now about nine minutes of walking and
+a tin of food about sixteen, so you can cross the country and come back. You still have to think
+about it — the flats have rations in them — but the survey no longer has to happen in one held
+breath.
+
+All of it is in the **Field Manual** under `H` → *The flats*, and it is asserted in
+`test/pressure.js`, which tests the engine path rather than the data tables: a world full of
+numbers is not a world that pushes back.
 
 ## Aiming and shooting
 

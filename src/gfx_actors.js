@@ -452,6 +452,74 @@ window.VG.GFX = window.VG.GFX || {};
     ctx.restore();
   }
 
+  /* ---------- the lunge tell ---------- */
+  /* The lane is the whole of the telegraph and it has to be honest: the
+     strip on the ground is exactly the strip the Rusted will travel down,
+     along the direction it was facing when it stopped. Step out of it and
+     it misses. A tell that lies is worse than no tell, because the player
+     will trust it and then be hit.
+
+     It is drawn on the ground, under everything, because it is a mark on
+     the ground. And it carries its own darkness underneath, the same rule
+     the hit marker follows: a bright edge drawn over lit sand or over a
+     flaring body dissolves into the thing it is drawn on. */
+  function paintLungeLane(ctx, e, sx, sy) {
+    const L = VG.LUNGE || null;
+    const len = (L && L.dist) || 130;
+    const wind = L && L.windup ? L.windup : 0.55;
+    const ang = e.lungeAng;
+    if (typeof ang !== 'number' || !isFinite(ang)) return;
+    /* the lane fills as the tell goes off, so a tell you looked away from
+       still ends in a full lane */
+    const left = Math.max(0, Math.min(1, (e.windup || 0) / wind));
+    const pulse = 0.55 + 0.45 * Math.sin(left * 7.0 + 2.2);
+    const halfW = 13;
+    const reach = len * (0.30 + 0.70 * left);
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(ang);
+    /* the dark edge first, wider than the fill - the lane has to stay
+       readable on bright sand and on a flaring body alike */
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = 'rgba(9,8,6,.70)';
+    ctx.fillRect(2, -halfW - 2.5, reach + 4, (halfW + 2.5) * 2);
+    /* the lane: thin, so it reads as light thrown on the ground rather
+       than as a plank lying on it */
+    ctx.globalAlpha = 0.13 + 0.15 * pulse;
+    ctx.fillStyle = 'rgba(222,124,42,.95)';
+    ctx.fillRect(2, -halfW, reach, halfW * 2);
+    /* the two hard edges - these are the lines the player actually reads */
+    ctx.globalAlpha = 0.70 * pulse;
+    ctx.strokeStyle = 'rgba(255,206,126,.98)';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(2, -halfW);
+    ctx.lineTo(reach + 2, -halfW);
+    ctx.moveTo(2, halfW);
+    ctx.lineTo(reach + 2, halfW);
+    ctx.stroke();
+    /* and the way it is going, down the middle */
+    ctx.globalAlpha = 0.55 * pulse;
+    ctx.strokeStyle = 'rgba(255,232,190,.9)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.moveTo(8, 0);
+    ctx.lineTo(reach + 1, 0);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    /* the head of the lane, so the direction of travel is not a guess */
+    ctx.globalAlpha = 0.60 * pulse;
+    ctx.strokeStyle = 'rgba(255,214,150,.95)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(reach + 1, -halfW * 0.55);
+    ctx.lineTo(reach - 7, 0);
+    ctx.lineTo(reach + 1, halfW * 0.55);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function paintEnemy(ctx, e, sx, sy, p, time) {
     const face = enemyFace(e, p);
     if (e.kind === 'warden') paintWarden(ctx, e, sx, sy, face, time);
@@ -856,6 +924,12 @@ window.VG.GFX = window.VG.GFX || {};
       live.push({ e: e, sx: sx, sy: sy });
     }
     live.sort(function (a, b) { return a.sy - b.sy; });
+    /* the lunge lanes go on the ground, under the actors - a mark on the
+       flats, not a thing floating over them */
+    for (let i = 0; i < live.length; i++) {
+      const e = live[i].e;
+      if (e.windup > 0) paintLungeLane(ctx, e, live[i].sx, live[i].sy);
+    }
     for (let i = 0; i < live.length; i++) {
       paintEnemy(ctx, live[i].e, live[i].sx, live[i].sy, p, time);
     }

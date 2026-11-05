@@ -110,17 +110,21 @@ window.VG = window.VG || {};
       for (const c of VG.World.containers) if (openSet.has(c.id)) c.opened = true;
       const discSet = new Set(d.discovered || []);
       for (const q of VG.World.pois) if (discSet.has(q.id)) q.discovered = true;
-      const deadSet = new Set(d.dead || []);
-      for (const e of VG.World.enemies) {
-        if (deadSet.has(e.id)) { e.dead = true; e.hp = 0; }
-        e.maxhp = e.hp;
-      }
       VG.Player = p;
       /* the files that were opened before the save have to be back in the
          world before the player goes looking for them. This runs after the
          opened crates are restored, because a crate the player already
          emptied is not a crate the evidence can go back into. */
       if (VG.rebuildOpenClues) VG.rebuildOpenClues(VG.World, p);
+      /* and the dead come back dead. This has to run after the evidence is
+         placed, because placing a file puts its guards into the world -
+         and a guard you already killed has to stay killed, or the file
+         you closed becomes a file you have to fight through twice. */
+      const deadSet = new Set(d.dead || []);
+      for (const e of VG.World.enemies) {
+        if (deadSet.has(e.id)) { e.dead = true; e.hp = 0; }
+        e.maxhp = e.hp;
+      }
       /* the living-flats state is applied after VG.DYN.init, which resets it */
       VG.loadedDyn = d.dyn || null;
       return p;

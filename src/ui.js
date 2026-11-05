@@ -396,11 +396,28 @@ window.VG = window.VG || {};
   };
 
   /* ================= inventory ================= */
+  /* Put something down. The pack has a limit, and a limit the player cannot
+     act on is just a wall. */
+  VG.dropItem = function (id) {
+    const p = VG.Player;
+    if (!p) return;
+    const n = VG.invDrop(p, id, 1);
+    if (n <= 0) return;
+    const it = VG.item(id);
+    VG.log('Put down: ' + (it ? it.name : id), '');
+    if (VG.Audio) VG.Audio.pickup();
+    VG.renderInv();
+  };
+
   VG.renderInv = function () {
     const p = VG.Player, body = $('#inv-body');
     if (!body) return;
     const car = $('#inv-car');
-    if (car) car.textContent = VG.invWeight(p) + ' / ' + VG.CARRY + ' load';
+    if (car) {
+      const w = VG.invWeight(p);
+      car.textContent = w + ' / ' + VG.CARRY + ' load';
+      car.style.color = w > VG.CARRY ? '#c9533f' : '';
+    }
     const cats = { gear: ['weapon', 'armor', 'misc', 'key', 'ammo'], mat: ['mat'], aid: ['aid'], intel: ['intel'] };
     const list = cats[invTab] || [];
     const entries = Object.keys(p.inv).filter((id) => {
@@ -434,12 +451,20 @@ window.VG = window.VG || {};
         VG.htmlEscape(it.glyph) + '  ' + VG.htmlEscape(it.name) + ' <span class="muted">x' + n + '</span></div>' +
         '<div class="d">' + VG.htmlEscape(it.desc) + '</div>' +
         '<div class="meta">' + it.cat + ' · ' + it.val + ' scrap · ' + (it.w || 1) + ' load' +
-        (verb ? ' · ' + verb : '') + mods + passive + act + '</div></div>';
+        (verb ? ' · ' + verb : '') + mods + passive + act +
+        ' · <span class="do" data-drop="' + id + '">put down</span></div></div>';
     }
     h += '</div>';
     body.innerHTML = h;
     body.querySelectorAll('[data-use]').forEach((e) => {
       e.onclick = () => VG.useItem(e.getAttribute('data-use'));
+    });
+    /* A pack you cannot empty is not a limit, it is a wall. */
+    body.querySelectorAll('[data-drop]').forEach((e) => {
+      e.onclick = (ev) => {
+        if (ev && ev.stopPropagation) ev.stopPropagation();
+        VG.dropItem(e.getAttribute('data-drop'));
+      };
     });
   };
 
@@ -838,8 +863,10 @@ window.VG = window.VG || {};
   VG.renderCraft = function () {
     const p = VG.Player, body = $('#craft-body');
     if (!body) return;
+    /* the bench you are standing at, or the truth that there is not one */
+    const bench = VG.benchAt(p, VG.World);
     const st = $('#craft-station');
-    if (st) st.textContent = VG.craftStation || 'field workbench';
+    if (st) st.textContent = bench ? bench.name : 'no bench in reach';
     let h = '';
     for (const r of VG.craftRecipes) {
       const need = r.need || {};
@@ -849,15 +876,21 @@ window.VG = window.VG || {};
         if (have < need[k]) ok = false;
         parts.push(VG.htmlEscape(VG.item(k) ? VG.item(k).name : k) + ' ' + have + '/' + need[k]);
       }
+      const here = VG.canCraft(p, r);
+      const can = ok && here;
       h += '<div class="listitem"><div class="n">' + VG.htmlEscape(VG.item(r.out) ? VG.item(r.out).name : r.out) + ' x' + r.qty + '</div>' +
-        '<div class="d">' + parts.join(' · ') + '</div>' +
-        '<div class="meta" style="margin-top:5px"><span class="btn' + (ok ? ' prim' : ' dis') + '" data-craft="' + r.id + '">CRAFT</span></div></div>';
+        '<div class="d">' + parts.join(' · ') + (here ? '' : ' · needs a bench') + '</div>' +
+        '<div class="meta" style="margin-top:5px"><span class="btn' + (can ? ' prim' : ' dis') + '" data-craft="' + r.id + '">CRAFT</span></div></div>';
+    }
+    if (!bench) {
+      h += '<p class="muted" style="margin-top:8px">A bench is a place you go. The depot press, the market stall, the substation and the fuel stop have one.</p>';
     }
     body.innerHTML = h;
     body.querySelectorAll('[data-craft]').forEach((e) => {
       e.onclick = () => {
         const r = VG.craftRecipes.find((x) => x.id === e.getAttribute('data-craft'));
         if (!r) return;
+        if (!VG.canCraft(p, r)) { VG.log('That needs a bench. Find one.', 'bad'); return; }
         for (const k in r.need) if ((p.inv[k] || 0) < r.need[k]) { VG.log('Not enough materials.', 'bad'); return; }
         for (const k in r.need) VG.invRemove(p, k, r.need[k]);
         VG.invAdd(p, r.out, r.qty);

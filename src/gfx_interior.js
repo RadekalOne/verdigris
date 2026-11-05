@@ -58,6 +58,7 @@ window.VG.GFX = window.VG.GFX || {};
     bed: { c: '#8d8676', t: '#6b6558' },
     bunk: { c: '#6f6a5c', t: '#53503f' },
     cage: { c: '#5d6668', t: '#454c4d' },
+    bench: { c: '#7a6a52', t: '#5a4e3c' },
     freezer: { c: '#7e8a8c', t: '#5e686a' },
     scale: { c: '#6e6a5c', t: '#514e43' },
     board: { c: '#2f3a30', t: '#232b24' },
@@ -239,6 +240,20 @@ window.VG.GFX = window.VG.GFX || {};
         box(ctx, x, y, w, h, k.c, k.t);
         ctx.fillStyle = 'rgba(228,220,198,.55)';
         ctx.fillRect(x + w - 16, y + 4, 11, 8);
+        break;
+      case 'bench':
+        /* a workbench: a stout top, a vice at one end, and a scatter of
+           parts on it. It has to look like the place you make things,
+           because the rule that ammo needs a bench only means something
+           if the player can see the bench. */
+        box(ctx, x, y, w, h, k.c, k.t);
+        ctx.fillStyle = 'rgba(232,214,170,.20)';
+        ctx.fillRect(x + 3, y + 3, w - 6, 2);
+        ctx.fillStyle = 'rgba(38,36,30,.55)';
+        ctx.fillRect(x + w - 15, y + 5, 10, 8);
+        ctx.fillStyle = 'rgba(30,28,23,.42)';
+        ctx.fillRect(x + 8, y + 8, 5, 3);
+        ctx.fillRect(x + 18, y + 9, 4, 3);
         break;
       case 'table':
         box(ctx, x, y, w, h, k.c, k.t);

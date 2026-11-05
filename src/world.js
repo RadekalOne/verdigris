@@ -372,13 +372,16 @@ window.VG = window.VG || {};
       enemies.push({
         id: 'e' + i, x: x + rng(), y: y + rng(), kind, hp: kind === 'warden' ? 120 : kind === 'drover' ? 46 : 70,
         dmg: kind === 'warden' ? 17 : kind === 'drover' ? 9 : 12, r: 11, aggro: 0, dead: false,
-        home: { x, y }, loot: null
+        home: { x, y }, loot: null,
+        windup: 0, lunge: 0, lungeT: 0, lungeCd: 0, lungeAng: 0
       });
     }
 
     const world = {
       seed, W, H, TILE, biome, elev, road, pois, containers, clues: [], enemies,
       town, yard, mine, lake, start,
+      /* which files have been put into this world - a file is placed once */
+      casesPlaced: [],
       idx, inb,
       biomeAt: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? B.scrub : biome[y * W + x]),
       isRoad: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : road[y * W + x]),
@@ -409,6 +412,49 @@ window.VG = window.VG || {};
     return VG.makeRng((((world && world.seed) || 0) ^ h) >>> 0);
   };
 
+  /* A guard holds the building that holds the evidence.
+     The flats used to be empty where the work was. A survey you can walk
+     into unopposed is a survey where nothing is at stake, and a file that
+     says "go and search the sheriff post" lands better when there is
+     somebody standing in front of the sheriff post.
+
+     The guard is placed by the evidence rather than by the map, so it is
+     always where the file points and never anywhere else. And its id is
+     derived from the clue rather than from a counter: the world is rebuilt
+     from the seed every load, so a counter would give the guard a new
+     name each time and the corpse you left would stand up again. */
+  VG.spawnGuard = function (world, poi, cl, rng) {
+    if (!world || !poi || !cl) return null;
+    /* the id carries the building as well as the clue, so a clue that ends
+       up in two places is guarded in both of them */
+    const id = 'g_' + cl.id + '_' + poi.id;
+    for (const e of world.enemies) if (e.id === id) return e;
+    /* stand it off the door a little, so the fight happens on the flats
+       and not in a doorway you cannot back out of */
+    const ang = rng() * VG.TAU;
+    const away = 100 + rng() * 70;
+    const gx = poi.x + Math.cos(ang) * away / VG.TILE;
+    const gy = poi.y + Math.sin(ang) * away / VG.TILE;
+    /* the big buildings are watched by something bigger */
+    const kind = (poi.tier >= 3) ? 'warden' : 'rusted';
+    const hp = kind === 'warden' ? 120 : 70;
+    const e = {
+      id: id, x: gx, y: gy, kind: kind, hp: hp, maxhp: hp,
+      dmg: kind === 'warden' ? 17 : 12,
+      r: 11, aggro: 0, dead: false, loot: null,
+      home: { x: gx, y: gy },
+      guardPoi: poi.id,
+      /* the post is the bit of ground it was put on, not the middle of
+         the building - a guard that strayed and snapped back would pop
+         through the doorway it was supposed to be standing outside of */
+      guardHome: { x: gx, y: gy },
+      guardOf: cl.id,
+      windup: 0, lunge: 0, lungeT: 0, lungeCd: 0, lungeAng: 0
+    };
+    world.enemies.push(e);
+    return e;
+  };
+
   /* Put one file's evidence into the world.
 
      Two rules the search loop depends on. The building has to be of the
@@ -421,6 +467,13 @@ window.VG = window.VG || {};
      survey. */
   VG.placeClues = function (world, cse) {
     if (!world || !cse) return [];
+    /* A file is placed in the world once. Putting it in twice scatters a
+       second copy of its evidence into a second building and gives the
+       player two answers to one question - and the guards would only be
+       raised for the first copy. */
+    if (!world.casesPlaced) world.casesPlaced = [];
+    if (world.casesPlaced.indexOf(cse.id) >= 0) return [];
+    world.casesPlaced.push(cse.id);
     const pois = world.pois, containers = world.containers;
     const rng = VG.caseRng(world, cse);
     const placed = [];
@@ -467,6 +520,8 @@ window.VG = window.VG || {};
       containers[slot].name = cl.name;
       world.clues.push({ id: cl.id, caseId: cse.id, x: host.x, y: host.y, container: slot });
       placed.push(cl.id);
+      /* and somebody is standing in front of it */
+      VG.spawnGuard(world, host, cl, rng);
     }
     return placed;
   };
