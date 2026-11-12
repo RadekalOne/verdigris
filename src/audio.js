@@ -24,9 +24,14 @@ window.VG = window.VG || {};
     vol: { master: 0.85, music: 0.75, sfx: 0.45, wind: 0.6 },
     stepPhase: 0,
     stepAccum: 0,
-    motifAt: 0,
-    motifStep: 0,
-    motifPhrase: [],
+    nextBar: 0,
+    bar: 0,
+    prog: null,
+    theme: null,
+    rest: 1,
+    phraseBar: 0,
+    lastIdx: 4,
+    arpOn: false,
     reactorNear: 0,
     night: false,
     haze: false,
@@ -34,7 +39,40 @@ window.VG = window.VG || {};
   };
   VG.Audio = A;
 
-  const PENTA = [220, 261.63, 293.66, 329.63, 392, 440, 523.25];
+  /* A minor pentatonic over two octaves: the scale the melody has always
+     been drawn from. Index 0 is A3. */
+  const PENTA = [220, 261.63, 293.66, 329.63, 392, 440, 523.25, 587.33, 659.25];
+
+  /* The harmony under it. The music used to be a drone and one note every
+     ten seconds or so - a theme with nothing holding it up. These four
+     chords all sit over the same A drone, so the ground never moves; what
+     changes is the colour above it. `tones` are the scale indices that
+     belong to the chord, which is where the melody lands on a strong beat. */
+  const CHORDS = {
+    Am: { pad: [220, 261.63, 329.63, 392], bass: 110, tones: [0, 1, 3, 4, 5, 6, 8] },
+    F: { pad: [174.61, 220, 261.63, 329.63], bass: 87.31, tones: [0, 1, 3, 5, 6, 8] },
+    C: { pad: [196, 261.63, 293.66, 329.63], bass: 130.81, tones: [1, 2, 3, 4, 6, 7, 8] },
+    Em: { pad: [196, 246.94, 293.66, 329.63], bass: 82.41, tones: [2, 3, 4, 7, 8] }
+  };
+  const PROGRESSIONS = [
+    ['Am', 'F', 'C', 'Em'],
+    ['Am', 'C', 'F', 'Em'],
+    ['Am', 'F', 'Am', 'Em'],
+    ['Am', 'Em', 'F', 'C']
+  ];
+  /* the pulse: slow enough to walk to */
+  const BEAT = 0.9;
+  const BAR = BEAT * 4;
+  const BARS_PER_CHORD = 4;
+  /* where the notes of a bar fall: [beat, length in beats] */
+  const RHYTHMS = [
+    [[0, 2], [2, 1], [3, 1]],
+    [[0, 1], [1, 1], [2, 2]],
+    [[0, 1.5], [1.5, 0.5], [2, 2]],
+    [[0, 3], [3, 1]],
+    [[1, 1], [2, 1], [3, 1]],
+    [[0, 1], [1.5, 0.5], [2, 1], [3, 1]]
+  ];
 
   function readStore(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function writeStore(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode */ } }
@@ -99,6 +137,42 @@ window.VG = window.VG || {};
     A.damp.connect(A.fb);
     A.fb.connect(A.delay);
     A.delay.connect(A.musicBus);
+
+    /* A room for the music to sit in. The impulse is made here, like every
+       other sound in the game: three seconds of noise dying away, darker at
+       the end than at the start. Chords and melody are both sent to it,
+       which is what stops them sounding like separate beeps. */
+    A.rev = null;
+    if (c.createConvolver) {
+      const rl = Math.floor(c.sampleRate * 3.2);
+      const ir = c.createBuffer(2, rl, c.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = ir.getChannelData(ch);
+        let lp = 0;
+        for (let i = 0; i < rl; i++) {
+          const k = i / rl;
+          const n = (Math.random() * 2 - 1) * Math.pow(1 - k, 2.6);
+          /* a one-pole lowpass that closes as the tail goes on */
+          const a = 0.55 - 0.45 * k;
+          lp += (n - lp) * a;
+          d[i] = lp;
+        }
+      }
+      A.rev = c.createConvolver();
+      A.rev.buffer = ir;
+      A.revOut = c.createGain();
+      A.revOut.gain.value = 0.5;
+      A.rev.connect(A.revOut);
+      A.revOut.connect(A.musicBus);
+    }
+
+    /* the chords pass through one filter, so the hour can darken all of them */
+    A.padFilter = c.createBiquadFilter();
+    A.padFilter.type = 'lowpass';
+    A.padFilter.frequency.value = 760;
+    A.padFilter.Q.value = 0.6;
+    A.padFilter.connect(A.musicBus);
+    if (A.rev) A.padFilter.connect(A.rev);
 
     /* shared white-noise buffer. Six seconds so the loop does not read as a
        repeating hiss. */
@@ -250,7 +324,7 @@ window.VG = window.VG || {};
   function tone(opts) {
     if (!A.ready) return;
     const c = A.ctx;
-    const t = now() + (opts.when || 0);
+    const t = (opts.at != null) ? opts.at : now() + (opts.when || 0);
     const o = c.createOscillator();
     o.type = opts.type || 'sine';
     o.frequency.setValueAtTime(opts.freq, t);
@@ -272,8 +346,16 @@ window.VG = window.VG || {};
       tail = f;
     }
     tail.connect(g);
-    g.connect(opts.bus || A.sfxBus);
-    if (opts.send) g.connect(A.delay);
+    let out = g;
+    if (opts.pan && c.createStereoPanner) {
+      const pn = c.createStereoPanner();
+      pn.pan.value = opts.pan;
+      g.connect(pn);
+      out = pn;
+    }
+    out.connect(opts.bus || A.sfxBus);
+    if (opts.send) out.connect(A.delay);
+    if (opts.room && A.rev) out.connect(A.rev);
     o.start(t);
     o.stop(t + dur + 0.05);
   }
@@ -383,32 +465,154 @@ window.VG = window.VG || {};
     tone({ type: 'triangle', freq: 392, gain: 0.05, dur: 1.4, when: 0.16, send: true });
   };
 
-  /* ---------- music motif ---------- */
+  /* ---------- the music ---------- */
+  /* Four layers over the drone, all on one slow pulse:
+       the chord    - a soft pad that changes every four bars
+       the bass     - the root of the chord, once, under the change
+       the melody   - phrases of a few notes with a rest between them, in
+                      the same voice the single notes used to have
+       the arpeggio - the chord picked out quietly, some of the time
+     Everything is scheduled a little ahead on the audio clock, so the
+     timing does not depend on the frame rate. */
 
-  function newPhrase() {
-    const n = 2 + Math.floor(Math.random() * 3);
-    const out = [];
-    let idx = 2 + Math.floor(Math.random() * 3);
-    for (let i = 0; i < n; i++) {
-      idx += Math.floor(Math.random() * 3) - 1;
+  const rnd = (n) => Math.floor(Math.random() * n);
+  const pick = (arr) => arr[rnd(arr.length)];
+
+  /* a held chord: two detuned saws a note, slow in and slow out */
+  function pad(freqs, at, dur) {
+    const c = A.ctx;
+    const env = c.createGain();
+    const peak = 0.024;
+    env.gain.setValueAtTime(0.0001, at);
+    env.gain.linearRampToValueAtTime(peak, at + 3.2);
+    env.gain.setValueAtTime(peak, at + dur - 3.6);
+    env.gain.linearRampToValueAtTime(0.0001, at + dur);
+    env.connect(A.padFilter);
+    for (let i = 0; i < freqs.length; i++) {
+      for (let k = 0; k < 2; k++) {
+        const o = c.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.value = freqs[i];
+        o.detune.value = (k ? 7 : -7) + (i - 1.5) * 1.5;
+        o.connect(env);
+        o.start(at);
+        o.stop(at + dur + 0.1);
+      }
+    }
+  }
+
+  /* one note of the tune: the triangle and its quiet octave, as before */
+  function voice(f, at, len, gain, pan) {
+    tone({ type: 'triangle', freq: f, gain: gain, dur: len, attack: 0.05, bus: A.musicBus, send: true, room: true, at: at, pan: pan });
+    tone({ type: 'sine', freq: f * 2, gain: gain * 0.28, dur: len * 0.7, attack: 0.06, bus: A.musicBus, room: true, at: at, pan: pan });
+  }
+
+  /* the nearest scale index to `idx` that belongs to the chord */
+  function toChordTone(idx, chord) {
+    let best = chord.tones[0], bd = 99;
+    for (const t of chord.tones) {
+      const d = Math.abs(t - idx);
+      if (d < bd || (d === bd && Math.random() < 0.5)) { bd = d; best = t; }
+    }
+    return best;
+  }
+
+  /* The theme: four steps that come back, so the tune is a tune and not a
+     run of unrelated notes. It is made once a session and played from
+     wherever the chord puts it. */
+  function makeTheme() {
+    const shapes = [[0, 1, -1, -2], [0, -1, 1, 2], [0, 2, 1, -1], [0, 1, 2, -1], [0, -2, -1, 1]];
+    return pick(shapes);
+  }
+
+  function melodyBar(chord, at, night) {
+    const rhythm = pick(RHYTHMS);
+    const first = A.phraseBar === 0;
+    const last = A.phraseBar >= 1;
+    let idx = A.lastIdx;
+    if (first) idx = toChordTone(night ? 3 : 4 + rnd(2), chord);
+    for (let i = 0; i < rhythm.length; i++) {
+      const beat = rhythm[i][0], len = rhythm[i][1];
+      if (first && i < A.theme.length) {
+        /* the theme, stated from a chord tone */
+        idx = (i === 0) ? idx : idx + (A.theme[i] - A.theme[i - 1]);
+      } else {
+        idx += pick([-1, -1, 1, 1, -2, 2, 0]);
+      }
       idx = Math.max(0, Math.min(PENTA.length - 1, idx));
-      out.push({ f: PENTA[idx], w: 0.9 + Math.random() * 0.9 });
+      /* strong beats and the end of a phrase land on the chord */
+      const closing = last && i === rhythm.length - 1;
+      if (beat === 0 || beat === 2 || closing) idx = toChordTone(idx, chord);
+      const hold = closing ? len * BEAT + 2.2 : len * BEAT + 0.9;
+      const t = at + beat * BEAT;
+      voice(PENTA[idx], t, hold, closing ? 0.07 : 0.062, 0.12);
+      /* the long notes carry a second voice underneath: the next chord
+         tone down, so the line is two notes wide where it matters */
+      if (len >= 2 || closing) {
+        const below = chord.tones.filter((x) => x < idx);
+        if (below.length) voice(PENTA[below[below.length - 1]], t + 0.03, hold, 0.032, -0.2);
+      }
     }
-    return out;
+    A.lastIdx = idx;
   }
 
-  function playMotif() {
-    const ph = A.motifPhrase;
-    if (!ph.length) return;
-    const step = ph[A.motifStep % ph.length];
-    A.motifStep++;
-    tone({ type: 'triangle', freq: step.f, gain: 0.075, dur: 1.5, attack: 0.05, bus: A.musicBus, send: true });
-    tone({ type: 'sine', freq: step.f * 2, gain: 0.022, dur: 1.0, attack: 0.06, bus: A.musicBus });
-    if (A.motifStep >= ph.length) {
-      A.motifStep = 0;
-      A.motifPhrase = newPhrase();
+  /* the chord picked out, one note a half-beat, an octave up and far back */
+  function arpBar(chord, at) {
+    const notes = chord.pad;
+    const order = pick([[0, 1, 2, 3, 2, 1, 2, 3], [0, 2, 1, 3, 2, 3, 1, 2], [3, 2, 1, 0, 1, 2, 3, 2]]);
+    for (let i = 0; i < 8; i++) {
+      const f = notes[order[i]] * 2;
+      tone({ type: 'sine', freq: f, gain: 0.021, dur: 0.75, attack: 0.012, bus: A.musicBus, send: true, room: true,
+        at: at + i * BEAT * 0.5, pan: (i % 2 ? 0.45 : -0.45) });
     }
   }
+
+  function scheduleBar(at) {
+    const night = A.night;
+    const inChord = A.bar % BARS_PER_CHORD;
+    const slot = Math.floor(A.bar / BARS_PER_CHORD) % 4;
+    if (inChord === 0) {
+      if (slot === 0 || !A.prog) A.prog = pick(PROGRESSIONS);
+      const ch = CHORDS[A.prog[slot]];
+      /* the chord overlaps the next one, so the change is a crossfade */
+      pad(ch.pad, at, BAR * BARS_PER_CHORD + 3.4);
+      tone({ type: 'sine', freq: ch.bass, gain: 0.085, dur: BAR * 2.4, attack: 0.5, bus: A.musicBus, at: at });
+      tone({ type: 'triangle', freq: ch.bass * 2, gain: 0.02, dur: BAR * 1.6, attack: 0.6, bus: A.musicBus, room: true, at: at });
+      A.arpOn = Math.random() < (night ? 0.25 : 0.5);
+    }
+    const chord = CHORDS[A.prog[slot]];
+    if (!A.theme) A.theme = makeTheme();
+
+    /* the melody plays a two-bar phrase, then leaves room */
+    let sang = false;
+    if (A.rest > 0) {
+      A.rest--;
+    } else {
+      sang = true;
+      melodyBar(chord, at, night);
+      A.phraseBar++;
+      if (A.phraseBar >= 2) {
+        A.phraseBar = 0;
+        A.rest = (night ? 2 : 1) + rnd(2);
+      }
+    }
+    /* the arpeggio fills the bars the melody leaves empty */
+    if (A.arpOn && !sang && inChord >= 1) arpBar(chord, at);
+    A.bar++;
+  }
+
+  /* Schedule every bar that starts before `until` (audio-clock seconds). */
+  A.musicAhead = function (until) {
+    if (!A.ready) return;
+    const t = A.ctx.currentTime;
+    /* first call, or the tab was away long enough that the pulse is stale */
+    if (!A.nextBar || A.nextBar < t - 0.25) A.nextBar = t + (A.bar ? 0.2 : 2.5);
+    let guard = 0;
+    while (A.nextBar < until && guard++ < 64) {
+      scheduleBar(A.nextBar);
+      A.nextBar += BAR;
+    }
+  };
 
   /* ---------- per-frame update ---------- */
 
@@ -457,13 +661,11 @@ window.VG = window.VG || {};
       A.stepAccum = Math.min(A.stepAccum, 18);
     }
 
-    /* sparse melody */
-    A.motifAt -= dt;
-    if (A.motifAt <= 0) {
-      if (!A.motifPhrase.length) A.motifPhrase = newPhrase();
-      playMotif();
-      A.motifAt = 7 + Math.random() * 11;
-    }
+    /* the chords close down after dark and open in a haze */
+    if (A.padFilter) easeParam(A.padFilter.frequency, A.night ? 520 : (A.haze ? 900 : 760), k);
+
+    /* the music, kept half a second ahead of the audio clock */
+    A.musicAhead(t + 0.6);
   };
 
   /* ---------- settings ---------- */
