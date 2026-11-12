@@ -3,7 +3,14 @@ window.VG = window.VG || {};
 (function (VG) {
   'use strict';
 
-  VG.state = { time: 9 * 3600, bullets: [], flash: 0, flare: 0, showCrosshair: true, paused: false, anim: 0, hits: [], swing: null, fireCd: 0 };
+  /* A survey starts at noon. The number that used to be here was 9 * 3600,
+     which was meant as nine in the morning and is not: the clock face is
+     offset from the raw counter (see VG.hourOfDay), so a new survey began at
+     17:09 and was in the dark seven minutes later, before the player had
+     learned to walk. Noon gives twenty minutes of daylight to learn in and
+     still brings the night inside one sitting. */
+  VG.START_TIME = 13824;
+  VG.state = { time: VG.START_TIME, bullets: [], flash: 0, flare: 0, showCrosshair: true, paused: false, anim: 0, hits: [], swing: null, fireCd: 0 };
 
   /* How fast the sky turns. At one second per second a full day took
      twenty-four hours of real time, which meant the light never changed
@@ -84,7 +91,9 @@ window.VG = window.VG || {};
     if (VG.INT && VG.INT.active) return VG.INT.findTarget(p);
     let best = null, bd = 62;
     for (const c of world.containers) {
-      if (c.opened) continue;
+      /* an emptied crate is skipped - unless the Office has filed evidence
+         in it since, which is exactly the crate the player has to reach */
+      if (!VG.crateSearchable(c, p)) continue;
       /* a crate inside a building is not reachable from the yard */
       if (c.inside) continue;
       const d = VG.dist(p.x, p.y, c.x * VG.TILE + VG.TILE / 2, c.y * VG.TILE + VG.TILE / 2);
@@ -161,6 +170,7 @@ window.VG = window.VG || {};
     if (emptied) c.loot = [];
     if (first) {
       p.containersOpened++;
+      VG.addXp(p, VG.XP.crate, true);
       if (VG.DYN) VG.DYN.addHeat(0.18);
       if (VG.Audio) VG.Audio.open();
       if (VG.Help) VG.Help.mark('searched');
@@ -184,15 +194,31 @@ window.VG = window.VG || {};
     const res = VG.takeLoot(p, c.loot);
     c.loot = res.left;
     let lines = [];
+    let best = 0;
     for (const l of res.taken) {
       const it = VG.item(l.id);
       lines.push((it ? it.name : l.id) + (l.qty > 1 ? ' x' + l.qty : ''));
+      if (it && (it.rarity || 0) > best) best = it.rarity || 0;
+      if (VG.FX) VG.FX.loot(l.id, l.qty);
     }
     if (c.surprise && VG.invCanFit(p, c.surprise.id, 1)) {
       VG.invAdd(p, c.surprise.id, 1);
       VG.log('SURPRISE FIND: ' + c.surprise.name + ' — ' + c.surprise.desc, 'clue');
       if (VG.Audio) VG.Audio.surprise();
+      const sit = VG.item(c.surprise.id);
+      if (sit && (sit.rarity || 0) > best) best = sit.rarity || 0;
+      if (VG.FX) {
+        VG.FX.loot(c.surprise.id, 1);
+        VG.FX.banner('SURPRISE FIND', c.surprise.name, { sub: c.surprise.desc, color: (VG.RARITY_COLOR || [])[sit ? sit.rarity : 4] || '#e8b34a', hold: 2800 });
+      }
       c.surprise = null;
+    }
+    if (VG.FX && !c.inside) VG.FX.crate(c.x * VG.TILE + VG.TILE / 2, c.y * VG.TILE + VG.TILE / 2, best);
+    /* the good stuff is announced: a rare find that scrolls past in the log
+       at the same size as a handful of cloth is a find the player misses */
+    if (VG.FX && best >= 3 && first) {
+      if (VG.Audio) VG.Audio.surprise();
+      VG.FX.addShake(2);
     }
     if (lines.length) {
       VG.log('Searched: ' + lines.join(', '), 'good');
@@ -220,6 +246,8 @@ window.VG = window.VG || {};
         p.foundClues[cl.caseId] = p.foundClues[cl.caseId] || [];
         if (p.foundClues[cl.caseId].indexOf(cl.id) < 0) p.foundClues[cl.caseId].push(cl.id);
         VG.log('EVIDENCE — ' + cl.name + ': ' + cl.text, 'clue');
+        VG.addXp(p, VG.XP.clue, true);
+        if (VG.FX) VG.FX.banner('EVIDENCE', cl.name, { sub: cse ? cse.title + ' · press J to read the file' : '', color: '#7fc4d8', hold: 2600 });
         if (VG.Audio) VG.Audio.clue();
         if (VG.Help) VG.Help.mark('read');
         if (cse) VG.log('Case file updated: ' + cse.title, 'clue');
@@ -272,8 +300,8 @@ window.VG = window.VG || {};
     }
     p.solvedSolutions[cse.id] = p.solvedSolutions[cse.id] || [];
     p.solvedSolutions[cse.id].push(s.id);
-    p.xp += 250;
-    p.level = 1 + Math.floor(p.xp / 250);
+    if (VG.FX) VG.FX.banner('CASE CLOSED', cse.title, { sub: s.label, color: '#e8b34a', hold: 3600 });
+    VG.addXp(p, VG.XP.caseClosed, true);
     if (VG.DYN) VG.DYN.addHeat(6);
     VG.log('CASE CLOSED: ' + cse.title, 'clue');
     if (VG.Audio) VG.Audio.close();
@@ -293,6 +321,7 @@ window.VG = window.VG || {};
       VG.placeClues(VG.World, next);
       if (VG.INT) VG.INT.prepare(VG.World);
       VG.log('FILE OPENED: ' + next.title, 'clue');
+      if (VG.FX) VG.FX.banner('FILE OPENED', next.title, { sub: 'New evidence is out on the flats', color: '#c08ce0', hold: 3000 });
       const want = VG.caseWantedTypes(next, p).map((k) => VG.poiTypeName(k));
       if (want.length) {
         VG.log('The file needs a ' + want.join(', a ') + '. Go in and search it.', '');
@@ -307,6 +336,7 @@ window.VG = window.VG || {};
     const closed = all.filter((c) => (p.solvedSolutions[c.id] || []).length).length;
     if (closed === all.length) VG.showEndgame();
     VG.renderJournal();
+    if (VG.autosave) VG.autosave();
     return true;
   };
 
@@ -414,6 +444,7 @@ window.VG = window.VG || {};
         if (da > 1.1) continue;
         e.hp -= dmg; hit = true; e.flash = 0.16;
         VG.markHit(e.x * VG.TILE, e.y * VG.TILE, dmg);
+        if (VG.FX) { VG.FX.impact(e.x * VG.TILE, e.y * VG.TILE, a + Math.PI); VG.FX.addShake(3.5); }
         if (e.hp <= 0) VG.killEnemy(e, p);
       }
       if (hit) { if (VG.Audio) VG.Audio.hit(); VG.log('Strike for ' + Math.round(dmg) + '.', 'good'); }
@@ -428,6 +459,10 @@ window.VG = window.VG || {};
     /* the round lives exactly as long as the weapon's reach, so a marksman
        rifle outranges a revolver instead of both firing the same distance */
     const life = VG.clamp((w && w.stats.range ? w.stats.range : 220) / sp, 0.08, 1.2);
+    if (VG.FX) {
+      VG.FX.muzzle(p.x + Math.cos(ang) * 18, p.y + Math.sin(ang) * 18, ang);
+      VG.FX.addShake(1.6 + Math.min(3, VG.attackDamage(p) / 22));
+    }
     VG.state.bullets.push({
       x: p.x + Math.cos(ang) * 14, y: p.y + Math.sin(ang) * 14,
       vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: life, dmg: VG.attackDamage(p)
@@ -484,6 +519,7 @@ window.VG = window.VG || {};
         if (VG.dist(cx, cy, ex, ey) < e.r + 3) {
           e.hp -= b.dmg; gone = true; e.flash = 0.16;
           VG.markHit(ex, ey, b.dmg);
+          if (VG.FX) VG.FX.impact(cx, cy, Math.atan2(b.vy, b.vx));
           if (VG.Audio) VG.Audio.hit();
           if (e.hp <= 0) VG.killEnemy(e, p);
           break;
@@ -618,12 +654,19 @@ window.VG = window.VG || {};
     p.killed++;
     if (VG.DYN) VG.DYN.addHeat(1.2);
     VG.log('A ' + e.kind + ' goes down.', 'good');
+    if (VG.FX) {
+      VG.FX.wreck(e.x * VG.TILE, e.y * VG.TILE, e.kind);
+      VG.FX.addShake(e.kind === 'warden' ? 8 : 5);
+      VG.FX.hitStop(e.kind === 'warden' ? 0.09 : 0.05);
+    }
+    VG.addXp(p, e.kind === 'warden' ? VG.XP.warden : VG.XP.kill);
     const drop = VG.enemyDrop(e);
     const res = VG.takeLoot(p, drop);
     const parts = [];
     for (const l of res.taken) {
       const it = VG.item(l.id);
       parts.push((it ? it.name : l.id) + (l.qty > 1 ? ' x' + l.qty : ''));
+      if (VG.FX) VG.FX.loot(l.id, l.qty);
     }
     if (parts.length) VG.log('You take from it: ' + parts.join(', '), 'good');
     if (res.left.length) VG.log('Your pack will not hold the rest.', 'bad');
@@ -634,13 +677,41 @@ window.VG = window.VG || {};
     if (p.hp > 0) return;
     if (p.deadHandled) return;
     p.deadHandled = true;
+    p.downs = (p.downs || 0) + 1;
     VG.log('You are down. The Survey Office files you as lost.', 'bad');
+    if (VG.FX) { VG.FX.addShake(10); VG.FX.fade(true); }
     setTimeout(() => {
-      p.hp = 60; p.stam = 60; p.dose = Math.min(p.dose, 40);
+      /* if you were in a room when it happened, you are not in it now */
+      if (VG.INT && VG.INT.active) VG.INT.active = null;
+      p.hp = Math.round(p.maxhp * 0.6); p.stam = 60; p.dose = Math.min(p.dose, 40);
+      /* Whoever carried you back gave you water. Without this a surveyor
+         who died of thirst woke up at the trailer with an empty canteen
+         clock, and died of thirst again four seconds later, forever. */
+      p.water = Math.max(p.water, 45); p.food = Math.max(p.food, 45);
       p.x = VG.World.start.x * VG.TILE; p.y = VG.World.start.y * VG.TILE;
       p.deadHandled = false;
-      VG.log('You come to at the field trailer.', 'good');
-    }, 1200);
+      /* nothing that was chasing you is still chasing you */
+      for (const e of VG.World.enemies) { e.aggro = 0; e.windup = 0; e.lunge = 0; }
+      VG.state.bullets.length = 0;
+      VG.log('You come to at the field trailer. Somebody carried you. Nothing in your pack is missing.', 'good');
+      if (VG.FX) { VG.FX.fade(false); VG.FX.banner('RECOVERED', 'The field trailer', { sub: 'Somebody carried you back. The files are where you left them.', color: '#d06a4a', hold: 3000 }); }
+      if (VG.autosave) VG.autosave();
+    }, 1500);
+  };
+
+  /* ---------- the survey keeps its own notes ---------- */
+  /* Saving used to be a key (F) the player had to know about and remember
+     to press. Somebody who played for forty minutes and closed the tab came
+     back to nothing, and that is the end of that player. The notes are kept
+     for them now: every minute, at every door, and whenever a file moves. */
+  VG.AUTOSAVE_EVERY = 60;
+  let autoT = 0;
+  VG.autosave = function () {
+    const p = VG.Player;
+    if (!p || !VG.World || !VG.saveGame) return false;
+    if (p.hp <= 0 || p.deadHandled) return false;
+    autoT = 0;
+    return VG.saveGame(true);
   };
 
   /* ---------- loop ---------- */
@@ -653,6 +724,12 @@ window.VG = window.VG || {};
     last = now;
     const p = VG.Player, world = VG.World;
     const st = VG.state;
+    /* the feel layer runs on real seconds; the world holds its breath for a
+       few frames when something dies, which is what makes a kill land */
+    if (VG.FX) {
+      if (!VG.paused) VG.FX.update(dt);
+      if (VG.FX.stop > 0) { VG.FX.stop -= dt; dt *= 0.06; }
+    }
 
     if (!VG.paused) {
       /* the animation clock runs on real seconds, not on the game clock —
@@ -690,6 +767,13 @@ window.VG = window.VG || {};
       }
       const moved = Math.hypot(p.x - px0, p.y - py0);
       if (moved > 0.4 && VG.Help) VG.Help.mark('moved');
+      /* a sprint kicks up the ground you are running on */
+      if (VG.FX && !inside && VG.sprint && moved > 0.4) {
+        st.dustT = (st.dustT || 0) - dt;
+        if (st.dustT <= 0) { st.dustT = 0.07; VG.FX.dust(p.x - Math.cos(p.face) * 8, p.y - Math.sin(p.face) * 8 + 6); }
+      }
+      autoT += dt;
+      if (autoT >= VG.AUTOSAVE_EVERY) VG.autosave();
       if (VG.Audio) {
         const yard = world.yard;
         const rd = inside ? 9999 : VG.dist(p.x, p.y, yard.x * VG.TILE, yard.y * VG.TILE);
@@ -714,7 +798,18 @@ window.VG = window.VG || {};
         for (const poi of world.pois) {
           if (!poi.discovered && VG.dist(p.x, p.y, poi.x * VG.TILE, poi.y * VG.TILE) < 260) {
             poi.discovered = true;
+            p.charted = (p.charted || 0) + 1;
             VG.log('Location charted: ' + poi.name, 'clue');
+            VG.addXp(p, VG.XP.chart, true);
+            if (VG.FX) {
+              const total = world.pois.length;
+              const done = world.pois.filter((q) => q.discovered).length;
+              const wanted = VG.wantedTypes ? VG.wantedTypes(p).indexOf(poi.type) >= 0 : false;
+              VG.FX.banner(wanted ? 'CHARTED · THE FILE NEEDS THIS' : 'LOCATION CHARTED', poi.name,
+                { sub: done + ' of ' + total + ' places on the flats', color: wanted ? '#e8b34a' : '#93b45a', hold: wanted ? 2600 : 1700 });
+              VG.FX.ring(poi.x * VG.TILE, poi.y * VG.TILE, 120, wanted ? '232,179,74' : '147,180,90', 0.9);
+            }
+            if (VG.Audio && VG.Audio.click) VG.Audio.click();
           }
         }
         st.nearestPoi = null;
@@ -796,7 +891,7 @@ window.VG = window.VG || {};
           if (VG.DYN) VG.DYN.answerCall(t.obj, VG.Player, VG.World);
         }
         else if (t && t.kind === 'door') {
-          if (VG.INT) VG.INT.enter(t.obj, VG.Player);
+          if (VG.INT && VG.INT.enter(t.obj, VG.Player)) VG.autosave();
         }
         else if (t && t.kind === 'exit') {
           if (VG.INT) VG.INT.exit(VG.Player);
@@ -884,7 +979,14 @@ window.VG = window.VG || {};
     bindInput();
     if (VG.Audio) VG.Audio.loadSettings();
     if (VG.DYN) VG.DYN.loadIntensity();
+    if (VG.FX) VG.FX.loadSettings();
+    if (VG.loadMoveMode) VG.loadMoveMode();
     if (VG.Help) { VG.Help.bind(); VG.Help.render(); }
+    /* the notes are kept if the tab is closed or put away mid-survey */
+    window.addEventListener('beforeunload', () => { if (VG.World && VG.autosave) VG.autosave(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && VG.World && VG.autosave) VG.autosave();
+    });
 
     const btn = document.getElementById('btn-start');
     const start = (loaded) => {
@@ -894,6 +996,7 @@ window.VG = window.VG || {};
         VG.genWorld((Math.random() * 0x7fffffff) | 0);
         VG.newPlayer(VG.World);
         VG.Player.deadHandled = false;
+        VG.state.time = VG.START_TIME;
       }
       /* the buildings take their crates inside: this has to run after the
          world exists, or it prepares a world that is about to be thrown away */
@@ -930,11 +1033,31 @@ window.VG = window.VG || {};
       if (VG.Help) VG.Help.refresh();
       requestAnimationFrame(frame);
     };
+    /* The title used to have one button, and it silently loaded a saved
+       survey if there was one - so there was no way to start again, and no
+       sign that there was anything to come back to. It says which it is now. */
+    const fresh = document.getElementById('btn-new');
+    const info = document.getElementById('title-save');
+    const saved = VG.hasSave() ? VG.saveSummary() : null;
     if (btn) {
+      if (saved) {
+        btn.textContent = 'CONTINUE SURVEY';
+        if (info) { info.textContent = saved; info.style.display = 'block'; }
+        if (fresh) fresh.style.display = 'inline-block';
+      }
       btn.onclick = () => {
-        const p = VG.loadGame();
+        const p = saved ? VG.loadGame() : null;
         if (p) { VG.log('Survey notes recovered.', 'good'); start(true); }
         else start(false);
+      };
+    }
+    if (fresh) {
+      let armed = false;
+      fresh.onclick = () => {
+        /* two clicks: the first one only asks */
+        if (!armed) { armed = true; fresh.textContent = 'ERASE THE OLD NOTES? CLICK AGAIN'; fresh.classList.add('warn'); return; }
+        VG.clearSave();
+        start(false);
       };
     }
   }

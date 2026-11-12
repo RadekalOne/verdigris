@@ -126,7 +126,7 @@ window.VG = window.VG || {};
      the radio step is pointless in a quiet world, and a coach that nags about
      a mechanic the player will never meet is worse than no coach. */
   const STEPS = [
-    { id: 'moved', keys: ['W', 'S', 'A', 'D'], text: 'The pointer shows where you go: W walks toward it, S walks back, A and D sidestep. Hold SHIFT to sprint.' },
+    { id: 'moved', keys: ['W', 'S', 'A', 'D'], text: 'The pointer shows where you go: W walks toward it, S walks back, A and D sidestep. Hold SHIFT to sprint. (Prefer W = up? Press O.)' },
     {
       id: 'equipped', keys: ['1-5', 'SPACE', 'TAB'],
       text: 'Press 1-5 to pick a hotbar slot, then SPACE to use what is in it: a weapon goes in your hand, a tin gets eaten, a canteen gets drunk. Anything else you find lands in your Field Kit (TAB) - click a weapon there to put it in your hand.',

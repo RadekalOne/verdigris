@@ -63,7 +63,10 @@ itself.
 | **Combat** | 14 weapons and 8 pieces of armour. Every weapon has a **reach**, a **rate of fire**, a **damage** figure and a **mod tag**, and every tag does something: `heavy` hits harder, `rapid` fires faster, `accurate` adds a fifth more punch, `silenced` means the Rusted notice you half as far off, `nightvision` lets you see 150 px further into the dark, `tough` adds a third to a plate. The **Flare Pistol** barely damages anything — it throws a signal flare that lights the ground around you for fifteen seconds. **The mouse is the aim**: the reticle is drawn under the cursor, a held left button fires at the weapon's rate, the round goes exactly where the reticle is, your figure turns to face it, and a hit leaves a mark and a damage number. |
 | **Day/night + weather** | Clear, wind, rain, corrosive haze, and a **dust storm** that sweeps across the flats as a visible front. The sky turns over at twenty-four times real time, so one survey runs from afternoon into dusk and then into the dark — which is when the rusted come out and when the torch, the lit windows and the convoy headlights actually matter. |
 | **Crafting** | 11 recipes across field craft and workbench. |
-| **Save** | `F` saves to localStorage. The title screen resumes your last survey. |
+| **Save** | The survey keeps its own notes: it saves every minute, at every door, when a file closes and when the tab is closed. `F` still saves by hand. The title screen says what is on file and offers **Continue** or **Start a new survey**. |
+| **Grades** | Everything the survey is made of pays experience - a place charted, a crate searched, evidence read, a question answered, a thing put down, a file closed. A promotion carries more (+6 load) and takes more (+8 health), and puts you back on your feet. |
+| **Feel** | A shot kicks, a hit throws sparks, a kill holds the world for a beat. What you pick up shows as a chip in its rarity colour; a charted place, a piece of evidence, a surprise find and a closed file each get a banner. Unsearched crates glint. Screen shake can be switched off in Options. |
+| **Walking** | Options (`O`) has both: walk toward the pointer (the default), or classic WASD where W is up the screen. |
 | **Sound** | Music and effects are **synthesised live in the browser** with the Web Audio API. There are no audio files anywhere in this project. Four independent layers — mixer, music, wind, effects — each on its own slider under `O`. The ambience reacts to the hour and the weather, and a reactor hum fades in as you approach Copper Mesa Station. `N` mutes. |
 | **Onboarding** | `H` opens the Field Manual: every control, a Survival table that says what drains each need and how to put it back, plus a checklist that ticks off as you learn the mechanics. A single line at the bottom of the screen tells you the next thing to try. |
 | **Options** | `O` opens the mixer *and* the flats dial — **Quiet**, **Alive** or **Dangerous**. Quiet keeps the radio and the weather but nobody needs you and nothing hunts you. Alive is the default. Dangerous is busier, richer, and it is keeping count. The story is identical in all three. |
@@ -276,7 +279,7 @@ Every sound is generated live in the browser — there is not a single audio fil
 | Layer | What it carries |
 |---|---|
 | **Mixer** | Everything, before it is split. |
-| **Music** | The drone, the reactor hum, the sparse pentatonic melody. |
+| **Music** | The drone and the reactor hum, and over them four layers on one slow pulse: a chord that changes every four bars, a bass note under the change, a pentatonic melody played in phrases with a second voice on the long notes, and a quiet arpeggio in the gaps. It darkens at night. |
 | **Wind** | The moving air over the flats. Its own layer, so you can keep the music and drop the wind entirely. |
 | **Effects** | Footsteps, doors, shots, deductions, pickups. |
 
@@ -327,7 +330,7 @@ The site itself is verified to run from `file://` as well, with a clean console.
 | `H` | field manual — every control, the survival table, plus the tutorial checklist |
 | `O` | options — mixer, sound layers, and how alive the flats are |
 | `N` | mute / unmute |
-| `F` | save |
+| `F` | save by hand (the survey also saves itself) |
 | `Esc` | close panel |
 
 ## Putting a need back
@@ -460,6 +463,7 @@ node test/live.js
 node test/interiors.js
 node test/weapons.js
 node test/cases.js
+node test/feel.js
 ```
 
 `cases.js` validates **the search loop**, because it is the one system in the game that cannot be

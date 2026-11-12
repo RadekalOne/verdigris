@@ -255,6 +255,7 @@ window.VG = window.VG || {};
     }
 
     known[d.output] = cse.id;
+    if (VG.addXp) VG.addXp(p, VG.XP.question, true);
     const fact = (cse.facts || []).find((x) => x.id === d.output);
     return { ok: true, note: d.note, label: fact ? fact.label : d.output };
   };

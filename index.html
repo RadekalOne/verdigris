@@ -38,6 +38,11 @@
   .bar{flex:1;height:7px;background:#20251d;border:1px solid var(--line);position:relative;overflow:hidden}
   .bar i{display:block;height:100%;width:0;transition:width .18s}
   .bar .num{position:absolute;right:3px;top:-1px;font-size:9px;color:var(--ink);opacity:.75}
+  .fill-hp i{background:linear-gradient(90deg,#8a3a2a,#d06a4a)}
+  .fill-hp{height:11px}
+  .fill-hp .num{top:0;font-size:9px;line-height:9px;opacity:.95;text-shadow:0 0 3px #000,0 0 3px #000}
+  .xpbar{height:3px;background:#20251d;border:1px solid var(--line);margin-top:4px}
+  .xpbar i{display:block;height:100%;background:var(--amber);transition:width .4s}
   .fill-stam i{background:linear-gradient(90deg,#5d7f3a,#93b45a)}
   .fill-food i{background:linear-gradient(90deg,#8a5a2a,#d09a4a)}
   .fill-water i{background:linear-gradient(90deg,#2a6a8a,#7fc4d8)}
@@ -53,7 +58,7 @@
   #needs-warn{margin-top:6px;padding-top:5px;border-top:1px solid var(--line);
     color:var(--rust);font-size:9px;letter-spacing:.12em;text-transform:uppercase;display:none;line-height:1.6}
   #needs-warn.show{display:block}
-  #rep{position:absolute;left:10px;top:150px;width:198px}
+  #rep{position:absolute;left:10px;top:168px;width:198px}
   #rep .r{display:flex;justify-content:space-between;font-size:11px;margin:2px 0}
   #rep .r b{font-weight:600}
   #rep .r span{color:var(--dim)}
@@ -100,7 +105,7 @@
   @keyframes fade{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
 
   /* ---- radio traffic ---- */
-  #comms{position:absolute;left:10px;top:238px;width:302px;font-size:10px;
+  #comms{position:absolute;left:10px;top:266px;width:302px;font-size:10px;
     background:rgba(12,14,11,.74);border:1px solid var(--line);padding:6px 8px}
   #comms .hdr{color:var(--amber);letter-spacing:.14em;font-size:9px;
     border-bottom:1px solid var(--line);padding-bottom:3px;margin-bottom:5px;
@@ -144,6 +149,36 @@
   .kvtable td.k{color:var(--amber);width:158px;font-size:10px;letter-spacing:.06em;white-space:nowrap}
   #danger{position:absolute;inset:0;pointer-events:none;opacity:0;
     background:radial-gradient(ellipse at center,transparent 42%,rgba(150,40,20,.55) 100%)}
+  #hurtflash{position:absolute;inset:0;pointer-events:none;opacity:0;
+    background:radial-gradient(ellipse at center,rgba(200,50,30,.10) 30%,rgba(200,40,20,.75) 100%)}
+
+  /* ---- the banner: the moments the game is about ---- */
+  #banner{position:absolute;left:50%;top:17%;transform:translate(-50%,-8px);min-width:300px;max-width:560px;
+    text-align:center;background:linear-gradient(180deg,rgba(12,14,11,.94),rgba(12,14,11,.86));
+    border-top:2px solid var(--amber);border-bottom:1px solid var(--line);padding:9px 26px 11px;
+    opacity:0;pointer-events:none;transition:opacity .22s,transform .22s}
+  #banner.on{opacity:1;transform:translate(-50%,0)}
+  #banner .k{font-size:10px;letter-spacing:.3em;text-transform:uppercase}
+  #banner .t{font-size:19px;letter-spacing:.08em;color:var(--ink);margin-top:3px}
+  #banner .s{font-size:11px;color:var(--dim);margin-top:4px;line-height:1.5}
+
+  /* ---- the loot feed: what you just picked up ---- */
+  #lootfeed{position:absolute;left:50%;bottom:132px;transform:translateX(-50%);display:flex;
+    flex-direction:column;align-items:center;gap:3px;pointer-events:none}
+  #lootfeed .chip{background:rgba(12,14,11,.9);border:1px solid var(--line);border-left:2px solid currentColor;
+    padding:2px 10px;font-size:12px;white-space:nowrap;animation:chip 3.6s ease-out forwards}
+  #lootfeed .chip .g{display:inline-block;width:16px;margin-right:5px;text-align:center}
+  #lootfeed .chip .n{color:var(--ink);opacity:.85}
+  #lootfeed .chip .rr{font-size:9px;letter-spacing:.14em;text-transform:uppercase;margin-left:6px;opacity:.8}
+  #lootfeed .chip.hot{box-shadow:0 0 14px -2px currentColor;font-weight:600}
+  #lootfeed .chip.xp{color:var(--faint);font-size:10px;border-left-color:var(--line2);animation-duration:2.6s}
+  @keyframes chip{0%{opacity:0;transform:translateY(10px) scale(.96)}8%{opacity:1;transform:none}
+    78%{opacity:1}100%{opacity:0;transform:translateY(-12px)}}
+
+  #savepip{position:absolute;left:50%;top:34px;transform:translateX(-50%);font-size:9px;letter-spacing:.2em;
+    color:var(--faint);opacity:0;pointer-events:none}
+  #savepip.on{animation:pip 2.2s ease-out}
+  @keyframes pip{0%{opacity:0}15%{opacity:1}70%{opacity:1}100%{opacity:0}}
 
   /* ---- modal panels ---- */
   #inv{left:50%;top:50%;transform:translate(-50%,-50%);width:760px;height:480px}
@@ -159,6 +194,7 @@
   .optrow .lbl{width:96px;font-size:10px;letter-spacing:.1em;color:var(--amber);text-transform:uppercase}
   .optrow .val{width:44px;text-align:right;font-size:11px;color:var(--ink)}
   .optrow .hint{margin:0 0 10px 106px;font-size:10px;color:var(--faint)}
+  #options-body > .hint{margin:0 0 10px 106px;font-size:10px;color:var(--faint);line-height:1.5}
   .optrow input[type=range]{flex:1;height:16px;-webkit-appearance:none;appearance:none;
     background:transparent;cursor:pointer;margin:0}
   .optrow input[type=range]::-webkit-slider-runnable-track{height:5px;background:#20251d;border:1px solid var(--line)}
@@ -212,6 +248,11 @@
     padding:9px 26px;cursor:pointer;background:rgba(30,36,28,.6)}
   #title .go:hover{border-color:var(--amber);color:var(--amber)}
   #title .hint{color:#4a4740;font-size:10px;margin-top:16px;letter-spacing:.08em}
+  #title .saveinfo{display:none;color:var(--dim);font-size:11px;letter-spacing:.06em;margin:-8px 0 14px}
+  #title .again{display:none;font-size:10px;letter-spacing:.18em;color:var(--faint);border:1px solid var(--line);
+    padding:6px 16px;cursor:pointer;margin-top:10px}
+  #title .again:hover{border-color:var(--line2);color:var(--ink)}
+  #title .again.warn{border-color:var(--rust);color:var(--rust)}
 </style>
 </head>
 <body>
@@ -220,6 +261,7 @@
 
   <div id="hud">
     <div id="stats" class="card">
+      <div class="row"><div class="lbl">Health</div><div class="bar fill-hp" id="bar-hp"><i id="b-hp"></i><span class="num" id="n-hp"></span></div></div>
       <div class="row"><div class="lbl">Stamina</div><div class="bar fill-stam" id="bar-stam"><i id="b-stam"></i></div></div>
       <div class="row"><div class="lbl">Food</div><div class="bar fill-food" id="bar-food"><i id="b-food"></i></div></div>
       <div class="row"><div class="lbl">Water</div><div class="bar fill-water" id="bar-water"><i id="b-water"></i></div></div>
@@ -245,8 +287,12 @@
     <div id="log"></div>
     <div id="coach"><span class="k">NEXT</span><span class="t"></span><span class="x">×</span></div>
     <div id="prompt"></div>
+    <div id="lootfeed"></div>
+    <div id="banner"></div>
+    <div id="savepip">NOTES SAVED</div>
   </div>
   <div id="danger"></div>
+  <div id="hurtflash"></div>
   <div id="fader"></div>
 
   <!-- INVENTORY -->
@@ -304,7 +350,9 @@
     <h1>VERDIGRIS</h1>
     <div class="sub">A Survey of the Copper Country</div>
     <p class="desc">Forty-one years ago the town of Verdigris Flats emptied in a single night and was never seen again. The Survey Office reopened the cold cases. Eleven thousand people went somewhere. The paperwork says they were evacuated. The paperwork is wrong.</p>
+    <div class="saveinfo" id="title-save"></div>
     <div class="go" id="btn-start">BEGIN SURVEY</div>
+    <div class="again" id="btn-new">START A NEW SURVEY</div>
     <div class="hint">mouse aims · W walk toward it · S back · A D sidestep · SHIFT sprint · E interact · TAB inventory · J journal · M map · C codex · 1-5 hotbar</div>
     <div class="hint">Press <b>H</b> at any time for the field manual · <b>O</b> for sound options · <b>N</b> to mute</div>
   </div>
@@ -329,6 +377,7 @@
 <script src="src/gfx_interior.js"></script>
 <script src="src/dyn_content.js"></script>
 <script src="src/dynamic.js"></script>
+<script src="src/fx.js"></script>
 <script src="src/render.js"></script>
 <script src="src/ui.js"></script>
 <script src="src/save.js"></script>

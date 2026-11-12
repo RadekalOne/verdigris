@@ -39,9 +39,9 @@ window.VG = window.VG || {};
     return VG.item(r) ? r : null;
   }
 
-  VG.saveGame = function () {
+  VG.saveGame = function (quiet) {
     const p = VG.Player, w = VG.World;
-    if (!p || !w) return;
+    if (!p || !w) return false;
     /* saving indoors saves the spot on the flats, not the spot in the room:
        the room is not a place you can be when you come back */
     const px = (VG.INT && VG.INT.active && p.wx !== undefined) ? p.wx : p.x;
@@ -53,19 +53,46 @@ window.VG = window.VG || {};
         inv: p.inv, ammo: p.ammo, hotbar: p.hotbar, sel: p.sel, weapon: p.weapon, armor: p.armor,
         rep: p.rep, knownFacts: p.knownFacts, readClues: p.readClues, solvedSolutions: p.solvedSolutions,
         foundClues: p.foundClues, rejectedTheories: p.rejectedTheories, doneContracts: p.doneContracts,
-        xp: p.xp, level: p.level, killed: p.killed, containersOpened: p.containersOpened
+        xp: p.xp, level: p.level, killed: p.killed, containersOpened: p.containersOpened,
+        charted: p.charted || 0, downs: p.downs || 0
       },
       opened: w.containers.filter((c) => c.opened).map((c) => c.id),
+      /* A crate that was searched but not emptied - the pack was full - has
+         its own state, and it is not "opened". Without this the crate came
+         back from a save unrolled, paid out its whole contents a second time,
+         and the things already taken from it were taken twice. What is still
+         in it is written down; what is not in it stays gone. */
+      partial: w.containers.filter((c) => !c.opened && c.loot).map((c) => ({
+        id: c.id, loot: c.loot, surprise: c.surprise || null
+      })),
       discovered: w.pois.filter((q) => q.discovered).map((q) => q.id),
       dead: w.enemies.filter((e) => e.dead).map((e) => e.id),
       dyn: VG.DYN ? VG.DYN.save() : null
     };
     try {
       localStorage.setItem(KEY, JSON.stringify(data));
-      VG.log('Survey notes saved.', 'good');
+      if (!quiet) VG.log('Survey notes saved.', 'good');
+      if (VG.FX) VG.FX.saved();
+      return true;
     } catch (err) {
-      VG.log('Could not save: ' + err.message, 'bad');
+      if (!quiet) VG.log('Could not save: ' + err.message, 'bad');
+      return false;
     }
+  };
+
+  /* One line for the title screen: what is waiting if you continue. */
+  VG.saveSummary = function () {
+    try {
+      const d = JSON.parse(localStorage.getItem(KEY));
+      if (!d || d.v !== 1 || !d.player) return null;
+      const s = d.player;
+      let closed = 0;
+      for (const k in (s.solvedSolutions || {})) if ((s.solvedSolutions[k] || []).length) closed++;
+      const total = VG.allCases ? VG.allCases().length : 8;
+      const lv = VG.levelForXp ? VG.levelForXp(s.xp || 0) : 1;
+      return 'Notes on file: ' + closed + ' of ' + total + ' cases closed · ' + (d.discovered || []).length +
+        ' places charted · ' + (VG.gradeName ? VG.gradeName(lv) : 'grade ' + lv);
+    } catch (e) { return null; }
   };
 
   VG.loadGame = function () {
@@ -78,9 +105,12 @@ window.VG = window.VG || {};
       VG.genWorld(d.seed);
       const p = VG.newPlayer(VG.World);
       const s = d.player || {};
-      for (const k of ['x', 'y', 'hp', 'stam', 'food', 'water', 'dose', 'xp', 'level', 'killed', 'containersOpened']) {
+      for (const k of ['x', 'y', 'hp', 'stam', 'food', 'water', 'dose', 'xp', 'level', 'killed', 'containersOpened', 'charted', 'downs']) {
         if (s[k] !== undefined) p[k] = s[k];
       }
+      /* the grade is worked out from the experience, never trusted from the
+         file: an older save counted levels a different way */
+      if (VG.applyGrade) { VG.applyGrade(p); p.hp = Math.min(p.hp, p.maxhp); }
       p.inv = sanitizeMap(s.inv); p.ammo = sanitizeMap(s.ammo, 'ammo');
       p.hotbar = (s.hotbar || p.hotbar).map(sanitizeSlot);
       p.sel = s.sel || 0; p.weapon = sanitizeSlot(s.weapon); p.armor = sanitizeSlot(s.armor);
@@ -109,6 +139,16 @@ window.VG = window.VG || {};
       VG.state.time = d.time || 0;
       const openSet = new Set(d.opened || []);
       for (const c of VG.World.containers) if (openSet.has(c.id)) c.opened = true;
+      const part = {};
+      for (const r of (d.partial || [])) part[r.id] = r;
+      for (const c of VG.World.containers) {
+        const r = part[c.id];
+        if (!r || c.opened) continue;
+        c.loot = (r.loot || []).filter((l) => l && VG.item(resolveItem(l.id)))
+          .map((l) => ({ id: resolveItem(l.id), qty: l.qty || 1 }));
+        c.surprise = (r.surprise && VG.item(r.surprise.id)) ? r.surprise : null;
+        c.partial = true;
+      }
       const discSet = new Set(d.discovered || []);
       for (const q of VG.World.pois) if (discSet.has(q.id)) q.discovered = true;
       VG.Player = p;
