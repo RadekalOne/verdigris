@@ -338,8 +338,8 @@ window.VG = window.VG || {};
     D.stats.answered++;
     const got = giveItems(p, call.reward && call.reward.items, mult);
     const xp = Math.round((call.reward && call.reward.xp ? call.reward.xp : 40) * mult);
-    p.xp += xp;
-    p.level = 1 + Math.floor(p.xp / 250);
+    if (VG.addXp) VG.addXp(p, xp, true);
+    else p.xp += xp;
     if (call.reward && call.reward.rep) {
       for (const k in call.reward.rep) p.rep[k] = (p.rep[k] || 0) + call.reward.rep[k];
     }

@@ -55,6 +55,13 @@ window.VG = window.VG || {};
       const e = document.getElementById(id);
       if (e) e.style.width = VG.clamp((v / max) * 100, 0, 100) + '%';
     };
+    /* Health. There was no health bar at all: the only sign of a wound was a
+       red edge that appeared below 45, so a player at 46 and a player at 100
+       saw the same screen. The number is on the bar because a fight is a
+       sum the player is doing in their head. */
+    setBar('b-hp', p.hp, p.maxhp || 100);
+    const hpn = document.getElementById('n-hp');
+    if (hpn) hpn.textContent = Math.max(0, Math.ceil(p.hp)) + ' / ' + (p.maxhp || 100);
     setBar('b-stam', p.stam, 100);
     setBar('b-food', p.food, 100);
     setBar('b-water', p.water, 100);
@@ -70,6 +77,7 @@ window.VG = window.VG || {};
       const base = e.className.replace(/\s+(low|crit)\b/g, '');
       e.className = base + (lvl ? ' ' + lvl : '');
     };
+    markBar('bar-hp', needLvl(100 * p.hp / (p.maxhp || 100)));
     markBar('bar-stam', needLvl(p.stam));
     markBar('bar-food', needLvl(p.food));
     markBar('bar-water', needLvl(p.water));
@@ -95,8 +103,14 @@ window.VG = window.VG || {};
         const col = v >= 6 ? '#93b45a' : v <= -6 ? '#d06a4a' : fa.color;
         h += '<div class="r"><b style="color:' + col + '">' + fa.name + '</b><span>' + (v > 0 ? '+' : '') + v + '</span></div>';
       }
-      h += '<div class="r" style="margin-top:4px;border-top:1px solid #2f382c;padding-top:4px"><b style="color:#e8b34a">Survey Office</b><span>Lv ' + p.level + '</span></div>';
-      rep.innerHTML = h;
+      /* the grade, and how far it is to the next one */
+      const lo = VG.xpForLevel(p.level), hi = VG.xpForLevel(p.level + 1);
+      const frac = VG.clamp(((p.xp || 0) - lo) / Math.max(1, hi - lo), 0, 1);
+      h += '<div class="r" style="margin-top:4px;border-top:1px solid #2f382c;padding-top:4px"><b style="color:#e8b34a">' +
+        VG.gradeName(p.level) + '</b><span>Grade ' + p.level + '</span></div>' +
+        '<div class="xpbar" title="experience"><i style="width:' + Math.round(frac * 100) + '%"></i></div>';
+      /* only touch the DOM when it changes: this runs every frame */
+      if (rep._h !== h) { rep._h = h; rep.innerHTML = h; }
     }
 
     // compass
@@ -322,7 +336,8 @@ window.VG = window.VG || {};
           VG.htmlEscape(selIt.name) + '</b>' +
           (hint ? ' <span class="act">' + VG.htmlEscape(hint) + '</span>' : '') + '</div>';
       }
-      hb.innerHTML = plate + '<div class="slots">' + h + '</div>';
+      const hbh = plate + '<div class="slots">' + h + '</div>';
+      if (hb._h !== hbh) { hb._h = hbh; hb.innerHTML = hbh; }
     }
 
     // danger vignette
@@ -424,8 +439,8 @@ window.VG = window.VG || {};
     const car = $('#inv-car');
     if (car) {
       const w = VG.invWeight(p);
-      car.textContent = w + ' / ' + VG.CARRY + ' load';
-      car.style.color = w > VG.CARRY ? '#c9533f' : '';
+      car.textContent = w + ' / ' + VG.carryCap(p) + ' load';
+      car.style.color = w > VG.carryCap(p) ? '#c9533f' : '';
     }
     const cats = { gear: ['weapon', 'armor', 'misc', 'key', 'ammo'], mat: ['mat'], aid: ['aid'], intel: ['intel'] };
     const list = cats[invTab] || [];
@@ -1002,18 +1017,47 @@ window.VG = window.VG || {};
       h += '<div style="height:18px"></div>';
     }
 
+    /* ---------- how it handles ---------- */
+    h += '<h3 style="color:var(--amber);font-size:11px;letter-spacing:.14em;margin:0 0 5px">CONTROLS</h3>';
+    const mm = VG.moveMode === 'screen' ? 'screen' : 'pointer';
+    h += '<div class="optrow"><div class="lbl">Walking</div>' +
+      '<div class="btn' + (mm === 'pointer' ? ' prim' : '') + '" data-move="pointer">TOWARD THE POINTER</div>' +
+      '<div class="btn' + (mm === 'screen' ? ' prim' : '') + '" data-move="screen">UP IS UP (CLASSIC WASD)</div></div>' +
+      '<div class="hint">' + (mm === 'pointer'
+        ? 'W walks toward the pointer, S away from it, A and D sidestep.'
+        : 'W is up the screen, S down, A left, D right. The pointer only aims.') + '</div>';
+    const shk = !VG.FX || VG.FX.shakeOn;
+    h += '<div class="optrow"><div class="lbl">Screen shake</div>' +
+      '<div class="btn' + (shk ? ' prim' : '') + '" id="opt-shake">' + (shk ? 'ON — CLICK TO TURN OFF' : 'OFF — CLICK TO TURN ON') + '</div></div>' +
+      '<div class="hint">The jolt on a shot, a hit and a kill. Turn it off if it bothers your eyes.</div>';
+    h += '<div style="height:18px"></div>';
+    const bindControls = () => {
+      body.querySelectorAll('[data-move]').forEach((el) => {
+        el.onclick = () => { VG.setMoveMode(el.getAttribute('data-move')); if (VG.Help && VG.Help.render) VG.Help.render(); VG.renderOptions(); };
+      });
+      const sb = document.getElementById('opt-shake');
+      if (sb) sb.onclick = () => { if (VG.FX) VG.FX.setShake(!VG.FX.shakeOn); VG.renderOptions(); };
+      body.querySelectorAll('[data-int]').forEach((el) => {
+        el.onclick = () => {
+          const k = el.getAttribute('data-int');
+          if (VG.DYN && VG.DYN.setIntensity(k)) VG.renderOptions();
+        };
+      });
+    };
+
     /* ---------- sound ---------- */
     if (!VG.Audio) {
       h += '<h3 style="color:var(--amber);font-size:11px;letter-spacing:.14em;margin:0 0 5px">SOUND</h3>' +
         '<p class="muted">Sound is unavailable in this browser.</p>';
       body.innerHTML = h;
+      bindControls();
       return;
     }
     const A = VG.Audio;
 
     const rows = [
       ['master', 'Mixer', 'Everything, before it is split'],
-      ['music', 'Music', 'Drone, reactor hum, the sparse melody'],
+      ['music', 'Music', 'Drone, reactor hum, the chords and the melody over them'],
       ['wind', 'Wind', 'The moving air. Drop it to zero and the flats go quiet'],
       ['sfx', 'Effects', 'Footsteps, doors, shots, deductions, pickups']
     ];
@@ -1041,13 +1085,7 @@ window.VG = window.VG || {};
     h += '<div class="btn" id="opt-reset">RESET SOUND DEFAULTS</div>';
 
     body.innerHTML = h;
-
-    body.querySelectorAll('[data-int]').forEach((el) => {
-      el.onclick = () => {
-        const k = el.getAttribute('data-int');
-        if (VG.DYN && VG.DYN.setIntensity(k)) VG.renderOptions();
-      };
-    });
+    bindControls();
 
     body.querySelectorAll('[data-vol]').forEach((el) => {
       el.oninput = () => {
@@ -1178,9 +1216,8 @@ window.VG = window.VG || {};
     if (q.reward) {
       for (const k in (q.reward.rep || {})) p.rep[k] = (p.rep[k] || 0) + q.reward.rep[k];
       for (const it of (q.reward.items || [])) VG.invAdd(p, it, 1);
-      p.xp += q.reward.xp || 0;
+      VG.addXp(p, q.reward.xp || 0, true);
     }
-    p.level = 1 + Math.floor(p.xp / 250);
     if (!p.doneContracts) p.doneContracts = {};
     p.doneContracts[q.id] = true;
     VG.log('Contract complete: ' + q.title, 'good');

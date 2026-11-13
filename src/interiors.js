@@ -773,7 +773,9 @@ window.VG = window.VG || {};
     const cs = INT.active.containers;
     for (let i = 0; i < cs.length; i++) {
       const c = cs[i];
-      if (c.opened) continue;
+      /* an emptied crate the Office has since filed evidence in is still a
+         crate you can reach - see VG.crateSearchable */
+      if (VG.crateSearchable ? !VG.crateSearchable(c, p) : c.opened) continue;
       const d = VG.dist(p.x, p.y, c.ix, c.iy);
       if (d < bd) { bd = d; best = { kind: 'container', obj: c, dist: d }; }
     }

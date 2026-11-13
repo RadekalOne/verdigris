@@ -26,6 +26,7 @@ window.VG = window.VG || {};
       foundClues: {},             // caseId -> [clueIds]
       rejectedTheories: {},       // deductionId -> how many theories the Office refused
       xp: 0, level: 1,
+      charted: 0,
       killed: 0, containersOpened: 0,
       lastDamage: 0,
       firing: 0
@@ -130,7 +131,7 @@ window.VG = window.VG || {};
     qty = qty || 1;
     const it = VG.item(id);
     const w = (it && it.w) ? it.w : 1;
-    return VG.invWeight(p) + w * qty <= VG.CARRY;
+    return VG.invWeight(p) + w * qty <= VG.carryCap(p);
   };
 
   /* Take what fits and leave the rest. The caller is told both, so a crate
@@ -142,7 +143,7 @@ window.VG = window.VG || {};
       const qty = l.qty || 1;
       const it = VG.item(l.id);
       const w = (it && it.w) ? it.w : 1;
-      const room = Math.floor((VG.CARRY - VG.invWeight(p)) / w);
+      const room = Math.floor((VG.carryCap(p) - VG.invWeight(p)) / w);
       if (room <= 0) { left.push({ id: l.id, qty: qty }); continue; }
       if (room >= qty) {
         VG.invAdd(p, l.id, qty);
@@ -167,6 +168,70 @@ window.VG = window.VG || {};
     return n;
   };
   VG.CARRY = 140;
+
+  /* ---------- experience ---------- */
+  /* The level used to be a number in the corner that did nothing. It was
+     paid only for closing a file, so it moved eight times in a whole survey
+     and bought nothing when it did. Now the things the survey is made of all
+     pay a little - a place charted, a crate searched, evidence read, a
+     question answered, a thing put down - and a grade is worth having: a
+     surveyor who has been out longer carries more and takes more killing.
+
+     The curve rises, so the early grades come quickly while the player is
+     still learning what the number is, and the late ones have to be earned. */
+  VG.XP = { chart: 12, crate: 4, clue: 35, question: 50, kill: 14, warden: 40, caseClosed: 250 };
+  VG.GRADE = { hp: 8, carry: 6 };
+  VG.GRADE_NAMES = ['Probationer', 'Field Clerk', 'Surveyor', 'Senior Surveyor', 'Investigator',
+    'Senior Investigator', 'Inspector', 'Chief Inspector', 'Commissioner'];
+
+  /* the experience a grade starts at: 0, 300, 800, 1500, 2400 ... */
+  VG.xpForLevel = function (lv) { return lv <= 1 ? 0 : 100 * (lv - 1) * (lv + 1); };
+  VG.levelForXp = function (xp) {
+    let lv = 1;
+    while (lv < 60 && xp >= VG.xpForLevel(lv + 1)) lv++;
+    return lv;
+  };
+  VG.gradeName = function (lv) {
+    return VG.GRADE_NAMES[Math.min(VG.GRADE_NAMES.length, Math.max(1, lv)) - 1];
+  };
+  VG.carryCap = function (p) {
+    return VG.CARRY + (Math.max(1, (p && p.level) || 1) - 1) * VG.GRADE.carry;
+  };
+  /* what a grade is worth, applied from the level so a loaded survey and a
+     live one can never disagree */
+  VG.applyGrade = function (p) {
+    p.level = VG.levelForXp(p.xp || 0);
+    p.maxhp = 100 + (p.level - 1) * VG.GRADE.hp;
+  };
+  VG.addXp = function (p, n, quiet) {
+    if (!p || !n) return;
+    const before = p.level || 1;
+    p.xp = (p.xp || 0) + n;
+    VG.applyGrade(p);
+    if (p.level > before) {
+      /* a promotion puts you back on your feet */
+      p.hp = p.maxhp;
+      if (VG.log) VG.log('PROMOTED: ' + VG.gradeName(p.level) + ' (grade ' + p.level + '). You carry ' +
+        VG.carryCap(p) + ' and can take ' + p.maxhp + '.', 'clue');
+      if (VG.Audio && VG.Audio.levelUp) VG.Audio.levelUp();
+      if (VG.FX) VG.FX.banner('PROMOTED · GRADE ' + p.level, VG.gradeName(p.level),
+        { sub: 'Health ' + p.maxhp + ' · Pack ' + VG.carryCap(p), color: '#93b45a', hold: 2600 });
+    } else if (!quiet && VG.FX) {
+      VG.FX.note('+' + n + ' xp', 'xp');
+    }
+  };
+
+  /* A crate is worth walking to when it has not been searched, or when the
+     Office has since filed evidence in it. Every place that decides whether
+     a crate can be reached, drawn or searched asks this one question - they
+     used to ask three different ones, and the targeting said "emptied, skip
+     it" about a crate the search itself would have opened. */
+  VG.crateSearchable = function (c, p) {
+    if (!c) return false;
+    if (!c.opened) return true;
+    p = p || VG.Player;
+    return !!(c.clueId && p && !(p.readClues && p.readClues[c.clueId]));
+  };
 
   VG.equipWeapon = function (p, id) {
     if (!VG.item(id) || VG.item(id).cat !== 'weapon') return false;
@@ -309,6 +374,7 @@ window.VG = window.VG || {};
     p.hp -= dealt;
     p.lastDamage = performance.now();
     if (VG.Audio) VG.Audio.hurt();
+    if (VG.FX) { VG.FX.addShake(4 + Math.min(6, dealt * 0.35)); VG.FX.hurtFlash(0.5 + Math.min(0.5, dealt / 30)); }
     if (p.hp <= 0) { p.hp = 0; if (VG.onDeath) VG.onDeath(cause || 'unknown'); }
     return dealt;
   };
@@ -336,7 +402,29 @@ window.VG = window.VG || {};
      sideways across it. The keys are measured against the heading and not
      against the screen, so the character has exactly one frame of reference
      - the way it is facing - and the two can never disagree. */
+  /* The other way to walk. Plenty of people come to a top-down game with
+     their hands already trained: W is up the screen, whatever the figure is
+     looking at. That is a setting now (Options), not an argument - the
+     pointer still aims, and only the meaning of the four keys changes. */
+  VG.moveMode = 'pointer';
+  VG.setMoveMode = function (m) {
+    VG.moveMode = (m === 'screen') ? 'screen' : 'pointer';
+    try { localStorage.setItem('verdigris.move', VG.moveMode); } catch (e) { /* private mode */ }
+  };
+  VG.loadMoveMode = function () {
+    let v = null;
+    try { v = localStorage.getItem('verdigris.move'); } catch (e) { /* private mode */ }
+    VG.moveMode = (v === 'screen') ? 'screen' : 'pointer';
+  };
+
   VG.moveVector = function (p, input) {
+    if (VG.moveMode === 'screen') {
+      const sx = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+      const sy = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+      const sm = Math.hypot(sx, sy);
+      if (sm < 1e-6) return { x: 0, y: 0, moving: false };
+      return { x: sx / sm, y: sy / sm, moving: true };
+    }
     const a = (typeof p.aim === 'number') ? p.aim
       : ((typeof p.face === 'number') ? p.face : 0);
     const fx = Math.cos(a), fy = Math.sin(a);

@@ -106,6 +106,16 @@ window.VG = window.VG || {};
     ctx.fillStyle = '#0a0c09';
     ctx.fillRect(0, 0, W, H);
 
+    /* --- the shake --- */
+    /* The whole world is drawn a few pixels off for a few frames after a
+       shot, a hit or a kill. The reticle is not: it is drawn after the
+       shake is undone, because the cursor is where the round goes and it
+       must stay under the hand. */
+    const FX = VG.FX || null;
+    const shk = FX ? FX.offset() : null;
+    const shaking = !!(shk && (shk.x || shk.y) && ctx.save && ctx.translate && ctx.restore);
+    if (shaking) { ctx.save(); ctx.translate(shk.x, shk.y); }
+
     /* --- terrain --- */
     if (G.paintTerrain) G.paintTerrain(ctx, cam, world);
     else paintFlatFallback(ctx, cam, world);
@@ -128,6 +138,9 @@ window.VG = window.VG || {};
     /* --- actors --- */
     if (G.paintActors) G.paintActors(ctx, cam, p, state, world);
 
+    /* --- sparks, dust and the glint on an unsearched crate --- */
+    if (FX) { FX.paintGlints(ctx, cam, world, W, H); FX.paint(ctx, cam); }
+
     /* --- artificial lights: buildings, then the actors' own --- */
     if (G.actorLights) {
       const al = G.actorLights(p, state, world, cam);
@@ -148,6 +161,7 @@ window.VG = window.VG || {};
     if (G.paintLiveMarkers) G.paintLiveMarkers(ctx, cam, world, dyn, p, state, anim);
     /* --- doors you can walk into, on the same footing --- */
     if (G.paintInteriorDoors) G.paintInteriorDoors(ctx, cam, world, p);
+    if (shaking) ctx.restore();
 
     /* --- the reticle --- */
     /* The reticle is drawn at the CURSOR, because the cursor is where the

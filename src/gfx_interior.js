@@ -685,7 +685,9 @@ window.VG.GFX = window.VG.GFX || {};
     if (room.containers && GFX.paintContainerAt) {
       for (i = 0; i < room.containers.length; i++) {
         var c = room.containers[i];
-        if (!c || c.opened) continue;
+        /* a crate you emptied is drawn again if evidence has been filed in
+           it since: a thing you can search has to be a thing you can see */
+        if (!c || (VG.crateSearchable ? !VG.crateSearchable(c, p) : c.opened)) continue;
         GFX.paintContainerAt(ctx, c, c.ix, c.iy);
         if (c.food && p && p.food <= 55) foodMarks.push(c);
       }
