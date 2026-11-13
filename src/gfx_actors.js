@@ -933,6 +933,22 @@ window.VG.GFX = window.VG.GFX || {};
     for (let i = 0; i < live.length; i++) {
       paintEnemy(ctx, live[i].e, live[i].sx, live[i].sy, p, time);
     }
+    /* the look: a thing that has just seen you says so before it comes */
+    for (let i = 0; i < live.length; i++) {
+      const e = live[i].e;
+      if (!(e.alert > 0) || !(e.aggro > 0)) continue;
+      const ax = live[i].sx, ay = live[i].sy - 30 - Math.sin(time * 14) * 2;
+      ctx.save();
+      ctx.font = 'bold 20px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(20,17,12,.85)';
+      ctx.strokeText('!', ax, ay);
+      ctx.fillStyle = '#e8b34a';
+      ctx.fillText('!', ax, ay);
+      ctx.restore();
+    }
 
     /* projectiles */
     const bullets = state.bullets || [];

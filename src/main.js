@@ -411,27 +411,65 @@ window.VG = window.VG || {};
   };
 
   /* ---------- combat ---------- */
+  /* An empty gun is still a lump of iron. Clicking with nothing in it used
+     to do nothing at all but print a line - at the moment the player most
+     needed the click to do something. It is a poor club, but it is a club. */
+  VG.DRY = { dmg: 9, range: 46, cd: 0.5 };
+  /* how much wider than its body a thing is to a round */
+  VG.HIT_PAD = 6;
+  let dryTold = 0;
+
+  /* Everything that happens to a thing when it is hit. A hit stops it for a
+     moment and shoves it back, and a hit during the windup breaks the lunge
+     - so shooting something that is about to jump you is the right answer,
+     not a wasted round. A Warden is heavier: it barely slows, and its lunge
+     cannot be broken. */
+  VG.hitEnemy = function (e, dmg, ang, p, push) {
+    if (!e || e.dead) return;
+    e.hp -= dmg; e.flash = 0.16;
+    const heavy = e.kind === 'warden';
+    e.stun = Math.max(e.stun || 0, heavy ? 0.12 : 0.3);
+    const k = (push || 8) * (heavy ? 0.4 : 1);
+    e.x += Math.cos(ang) * k / VG.TILE;
+    e.y += Math.sin(ang) * k / VG.TILE;
+    if (!heavy && e.windup > 0) { e.windup = 0; e.lungeCd = 1.2; }
+    e.alert = 0;
+    e.aggro = Math.max(e.aggro || 0, 2.2);
+    if (e.hp <= 0) VG.killEnemy(e, p);
+  };
+
   VG.fire = function (p, world) {
     if (VG.state.fireCd > 0) return;
-    if (VG.Audio) VG.Audio.shot();
     const w = VG.playerWeapon(p);
-    const range = VG.attackRange(p);
+    let range = VG.attackRange(p);
     /* a weapon is fired or swung, not chosen by an arbitrary reach number */
-    const ranged = VG.isRangedWeapon(w);
-    if (w && w.ammo && ranged) {
-      if ((p.ammo[w.ammo] || 0) <= 0) { VG.log('Out of ' + (VG.item(w.ammo) ? VG.item(w.ammo).name : 'ammunition') + '.', 'bad'); VG.state.fireCd = 0.25; return; }
-      p.ammo[w.ammo]--;
+    let ranged = VG.isRangedWeapon(w);
+    let dry = false;
+    if (w && w.ammo && ranged && (p.ammo[w.ammo] || 0) <= 0) {
+      dry = true; ranged = false; range = VG.DRY.range;
+      const nowT = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+      if (!dryTold || nowT - dryTold > 5000) {
+        dryTold = nowT || 1;
+        VG.log('Out of ' + (VG.item(w.ammo) ? VG.item(w.ammo).name : 'ammunition') +
+          '. You swing the empty ' + w.name + '. Press K to make rounds, or switch weapon with the wheel.', 'bad');
+      }
     }
-    VG.state.fireCd = VG.attackCooldown(p);
-    /* The round goes exactly where the reticle is. There is no spread: what
-       the player points at is what they hit, and the only variable is how
-       far the weapon reaches. */
-    const ang = Math.atan2(mouse.world.y - p.y, mouse.world.x - p.x);
+    if (VG.Audio) { if (dry) { if (VG.Audio.click) VG.Audio.click(); } else VG.Audio.shot(); }
+    if (ranged && w && w.ammo) p.ammo[w.ammo]--;
+    VG.state.fireCd = dry ? VG.DRY.cd : VG.attackCooldown(p);
+    /* The round goes where the reticle is. There is no spread; the one
+       thing done for the player is the lead on something that is moving
+       (VG.assistTarget), and that can be switched off. */
+    let ang = Math.atan2(mouse.world.y - p.y, mouse.world.x - p.x);
+    if (ranged && VG.assistTarget) {
+      const lock = VG.assistTarget(p, world, mouse.world, range, 760);
+      if (lock) ang = lock.ang;
+    }
     p.aim = ang;
     if (VG.Help) VG.Help.mark('fired');
     if (!ranged) {
       // melee swing
-      const dmg = VG.attackDamage(p);
+      const dmg = dry ? VG.DRY.dmg : VG.attackDamage(p);
       /* the swing is drawn: an invisible arc is a swing you cannot aim */
       VG.state.swing = { x: p.x, y: p.y, ang: ang, r: range, life: 0.22 };
       let hit = false;
@@ -442,10 +480,10 @@ window.VG = window.VG || {};
         const a = Math.atan2(e.y * VG.TILE - p.y, e.x * VG.TILE - p.x);
         let da = Math.abs(((a - ang + Math.PI * 3) % VG.TAU) - Math.PI);
         if (da > 1.1) continue;
-        e.hp -= dmg; hit = true; e.flash = 0.16;
+        hit = true;
         VG.markHit(e.x * VG.TILE, e.y * VG.TILE, dmg);
         if (VG.FX) { VG.FX.impact(e.x * VG.TILE, e.y * VG.TILE, a + Math.PI); VG.FX.addShake(3.5); }
-        if (e.hp <= 0) VG.killEnemy(e, p);
+        VG.hitEnemy(e, dmg, a, p, 16);
       }
       if (hit) { if (VG.Audio) VG.Audio.hit(); VG.log('Strike for ' + Math.round(dmg) + '.', 'good'); }
       return;
@@ -516,12 +554,12 @@ window.VG = window.VG || {};
           if (t < 0) t = 0; else if (t > 1) t = 1;
         }
         const cx = x0 + sx * t, cy = y0 + sy * t;
-        if (VG.dist(cx, cy, ex, ey) < e.r + 3) {
-          e.hp -= b.dmg; gone = true; e.flash = 0.16;
+        if (VG.dist(cx, cy, ex, ey) < e.r + VG.HIT_PAD) {
+          gone = true;
           VG.markHit(ex, ey, b.dmg);
           if (VG.FX) VG.FX.impact(cx, cy, Math.atan2(b.vy, b.vx));
           if (VG.Audio) VG.Audio.hit();
-          if (e.hp <= 0) VG.killEnemy(e, p);
+          VG.hitEnemy(e, b.dmg, Math.atan2(b.vy, b.vx), p, 8);
           break;
         }
       }
@@ -533,15 +571,35 @@ window.VG = window.VG || {};
     /* how close you have to be before anything notices you - a silenced
        weapon does not carry the shot */
     const notice = VG.aggroRange(p);
+    const fight = VG.fight ? VG.fight() : { dmg: 1, beat: 0 };
     for (const e of world.enemies) {
       if (e.dead) continue;
+      /* how fast it is going, for the lead on a shot. Worked out from where
+         it was last frame, so it is true whatever moved it. */
+      if (dt > 0 && typeof e.px === 'number') {
+        e.vx = (e.x - e.px) * VG.TILE / dt;
+        e.vy = (e.y - e.py) * VG.TILE / dt;
+      }
+      e.px = e.x; e.py = e.y;
       /* the flash of a thing that has just been hit */
       if (e.flash > 0) e.flash -= dt;
       const ex = e.x * VG.TILE, ey = e.y * VG.TILE;
       const d = VG.dist(p.x, p.y, ex, ey);
+      const wasCalm = !(e.aggro > 0);
       if (d < notice) e.aggro = 2.2;
       else e.aggro = Math.max(0, e.aggro - dt);
-      if (e.aggro > 0) {
+      /* The look. A thing that has just seen you stops and stares before it
+         comes. That beat is the player's: it is when the gun comes up. */
+      if (wasCalm && e.aggro > 0) {
+        e.alert = fight.beat;
+        if (VG.Audio && VG.Audio.click) VG.Audio.click();
+      }
+      if (e.aggro > 0 && e.stun > 0) {
+        /* it has just been hit: it does nothing for a moment */
+        e.stun -= dt;
+      } else if (e.aggro > 0 && e.alert > 0) {
+        e.alert -= dt;
+      } else if (e.aggro > 0) {
         /* The lunge. A rusted used to walk at half the player's pace, which
            meant nothing on the flats could ever catch you and the survey
            was a walk in a park. They are faster than a walking player now,
@@ -569,7 +627,7 @@ window.VG = window.VG || {};
           e.y += Math.sin(e.lungeAng) * step / VG.TILE;
           const ld = VG.dist(p.x, p.y, e.x * VG.TILE, e.y * VG.TILE);
           if (ld < e.r + p.r + 4 && p.lastDamage < performance.now() - 900) {
-            VG.damagePlayer(p, e.dmg, e.kind);
+            VG.damagePlayer(p, e.dmg * fight.dmg, e.kind);
             VG.log('It lunges. Hit by a ' + e.kind + '.', 'bad');
           }
           if (e.lungeT >= VG.LUNGE.dist || e.lunge <= 0) { e.lunge = 0; e.lungeCd = VG.LUNGE.cd; }
@@ -585,7 +643,7 @@ window.VG = window.VG || {};
             e.lungeT = 0;
           }
           if (d < e.r + p.r + 6 && p.lastDamage < performance.now() - 900) {
-            VG.damagePlayer(p, e.dmg, e.kind);
+            VG.damagePlayer(p, e.dmg * fight.dmg, e.kind);
             VG.log('Hit by a ' + e.kind + '.', 'bad');
           }
         }
@@ -629,8 +687,8 @@ window.VG = window.VG || {};
      makes eight copper about six kills. The other materials are spread so
      that no one of them is the only thing worth picking up. */
   VG.ENEMY_DROP = {
-    rusted: [['scrap_copper', 1, 4], ['scrap_cloth', 1, 2], ['scrap_ceramic', 1, 2], ['scrap_gear', 1, 2]],
-    drover: [['scrap_gear', 1, 2], ['scrap_copper', 1, 4], ['scrap_glass', 1, 2], ['scrap_ceramic', 1, 2]],
+    rusted: [['scrap_copper', 1, 4], ['scrap_cloth', 1, 2], ['scrap_ceramic', 1, 2], ['scrap_gear', 1, 2], ['ammo_slug', 2, 4]],
+    drover: [['scrap_gear', 1, 2], ['scrap_copper', 1, 4], ['scrap_glass', 1, 2], ['scrap_ceramic', 1, 2], ['ammo_slug', 2, 4]],
     warden: [['scrap_copper', 2, 4], ['scrap_gear', 1, 2], ['ammo_slug', 2, 6]]
   };
 
@@ -933,17 +991,33 @@ window.VG = window.VG || {};
         else if (VG.INT && VG.INT.active) VG.INT.exit(VG.Player);
       }
       if (k === 'f') { VG.saveGame(); }
-      if (k >= '1' && k <= '5') { VG.Player.sel = parseInt(k, 10) - 1; }
-      if (k === ' ' || k === 'enter') {
-        const p = VG.Player;
-        const id = p.hotbar[p.sel];
-        if (id) {
-          const it = VG.item(id);
-          if (it && it.cat === 'weapon') VG.equipWeapon(p, id);
-          else if (it) VG.useItem(id);
-        }
-      }
+      if (k >= '1' && k <= '5') { VG.selectSlot(VG.Player, parseInt(k, 10) - 1); }
+      /* the bar can be walked as well as dialled: Z back, X on, or the wheel */
+      if (k === 'z') VG.cycleSlot(VG.Player, -1);
+      if (k === 'x') VG.cycleSlot(VG.Player, 1);
+      /* one key to patch up, whatever slot is selected */
+      if (k === 'q' && !VG.paused) VG.quickHeal(VG.Player);
+      if (k === ' ' || k === 'enter') useSelected();
     });
+    function useSelected() {
+      const p = VG.Player;
+      if (!p || VG.paused) return;
+      const id = p.hotbar[p.sel];
+      if (!id) return;
+      const it = VG.item(id);
+      if (it && it.cat === 'weapon') VG.equipWeapon(p, id);
+      else if (it) VG.useItem(id);
+    }
+    let wheelAt = 0;
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (VG.paused || !VG.Player) return;
+      /* a trackpad sends a burst of these for one gesture */
+      const nowT = performance.now();
+      if (nowT - wheelAt < 90) return;
+      wheelAt = nowT;
+      VG.cycleSlot(VG.Player, e.deltaY > 0 ? 1 : -1);
+    }, { passive: false });
     window.addEventListener('keyup', (e) => {
       const k = e.key.toLowerCase();
       if (k === 'shift') VG.shiftHeld = false;
@@ -956,6 +1030,9 @@ window.VG = window.VG || {};
       mouse.x = e.clientX; mouse.y = e.clientY;
     });
     canvas.addEventListener('mousedown', (e) => {
+      /* the right button uses what is selected - the same as SPACE, for a
+         hand that is already on the mouse */
+      if (e.button === 2) { useSelected(); return; }
       /* no shooting indoors: there is nothing in the room to shoot */
       if (e.button !== 0) return;
       firing = true;
@@ -981,6 +1058,8 @@ window.VG = window.VG || {};
     if (VG.DYN) VG.DYN.loadIntensity();
     if (VG.FX) VG.FX.loadSettings();
     if (VG.loadMoveMode) VG.loadMoveMode();
+    if (VG.loadFightMode) VG.loadFightMode();
+    if (VG.loadAimAssist) VG.loadAimAssist();
     if (VG.Help) { VG.Help.bind(); VG.Help.render(); }
     /* the notes are kept if the tab is closed or put away mid-survey */
     window.addEventListener('beforeunload', () => { if (VG.World && VG.autosave) VG.autosave(); });
@@ -1022,6 +1101,7 @@ window.VG = window.VG || {};
       if (w0 && VG.isRangedWeapon(w0)) {
         VG.log(w0.name + ' in your hand, ' + (VG.Player.ammo[w0.ammo] || 0) +
           ' rounds. It reaches ' + w0.stats.range + 'm - further than anything on the flats can see you.', 'good');
+        VG.log('Wheel (or Z / X) changes what is in your hand. Q patches you up. K makes rounds and dressings.', 'good');
       } else if (w0) {
         VG.log(w0.name + ' in your hand. It is swung, not fired - ' + w0.stats.range + 'm of reach.', 'good');
       }

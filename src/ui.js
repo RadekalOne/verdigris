@@ -89,6 +89,12 @@ window.VG = window.VG || {};
       if (p.food <= 30) msgs.push('food low');
       if (p.dose >= 55) msgs.push('dose high');
       if (p.stam <= 15) msgs.push('exhausted');
+      /* A wound says what to press. The dressing was in the pack the whole
+         time and nothing on the screen connected it to the red bar. */
+      if (p.hp < (p.maxhp || 100) * 0.6 && VG.healCount) {
+        const hc = VG.healCount(p);
+        msgs.unshift(hc > 0 ? 'hurt — press Q to patch up (' + hc + ')' : 'hurt — no dressings: K makes two from cloth');
+      }
       warn.textContent = msgs.join(' · ');
       warn.classList.toggle('show', msgs.length > 0);
     }
@@ -331,12 +337,22 @@ window.VG = window.VG || {};
       const selIt = selId ? VG.item(selId) : null;
       let plate = '';
       if (selIt) {
-        const hint = VG.useHint ? VG.useHint(selIt, p) : '';
+        let hint = VG.useHint ? VG.useHint(selIt, p) : '';
+        /* an empty gun says so, and says what to do about it, before the
+           player finds out by clicking */
+        if (selIt.cat === 'weapon' && VG.isRangedWeapon(selIt)) {
+          const left = p.ammo[selIt.ammo] || 0;
+          if (left <= 0) hint = 'EMPTY - press K to make rounds';
+          else if (left <= 4) hint += ' - ' + left + ' left, K makes more';
+        } else if (selIt.cat === 'aid' && !selIt.passive && hint) {
+          hint += ' (or right-click)';
+        }
         plate = '<div id="slotinfo" class="on"><span class="k">SLOT ' + (p.sel + 1) + '</span><b>' +
           VG.htmlEscape(selIt.name) + '</b>' +
           (hint ? ' <span class="act">' + VG.htmlEscape(hint) + '</span>' : '') + '</div>';
       }
-      const hbh = plate + '<div class="slots">' + h + '</div>';
+      const hbh = plate + '<div class="slots">' + h + '</div>' +
+        '<div class="hbkeys">WHEEL or Z / X — switch &nbsp;·&nbsp; Q — patch up &nbsp;·&nbsp; K — make things</div>';
       if (hb._h !== hbh) { hb._h = hbh; hb.innerHTML = hbh; }
     }
 
@@ -959,34 +975,70 @@ window.VG = window.VG || {};
     const bench = VG.benchAt(p, VG.World);
     const st = $('#craft-station');
     if (st) st.textContent = bench ? bench.name : 'no bench in reach';
-    let h = '';
-    for (const r of VG.craftRecipes) {
+    /* The sheet used to be one flat list of names. It did not say what a
+       thing was for, which of them you could make right now, or where a
+       bench was - so it read as a list of things you could not do. It is in
+       two halves now: what your hands can make anywhere, and what a bench
+       makes, with the way to the nearest one. */
+    const row = (r) => {
       const need = r.need || {};
-      let ok = true, parts = [];
+      let ok = true;
+      const parts = [];
       for (const k in need) {
         const have = p.inv[k] || 0;
-        if (have < need[k]) ok = false;
-        parts.push(VG.htmlEscape(VG.item(k) ? VG.item(k).name : k) + ' ' + have + '/' + need[k]);
+        const short = have < need[k];
+        if (short) ok = false;
+        parts.push('<span style="color:' + (short ? 'var(--red,#d06a4a)' : 'var(--green,#93b45a)') + '">' +
+          VG.htmlEscape(VG.item(k) ? VG.item(k).name : k) + ' ' + have + '/' + need[k] + '</span>');
       }
       const here = VG.canCraft(p, r);
       const can = ok && here;
-      h += '<div class="listitem"><div class="n">' + VG.htmlEscape(VG.item(r.out) ? VG.item(r.out).name : r.out) + ' x' + r.qty + '</div>' +
-        '<div class="d">' + parts.join(' · ') + (here ? '' : ' · needs a bench') + '</div>' +
-        '<div class="meta" style="margin-top:5px"><span class="btn' + (can ? ' prim' : ' dis') + '" data-craft="' + r.id + '">CRAFT</span></div></div>';
+      const out = VG.item(r.out);
+      const eff = VG.itemEffect ? VG.itemEffect(out, p) : '';
+      return {
+        can: can,
+        html: '<div class="listitem"><div class="n">' + VG.htmlEscape(out ? out.name : r.out) + ' x' + r.qty +
+          (eff ? ' <span class="muted" style="font-weight:400">— ' + VG.htmlEscape(eff) + '</span>' : '') + '</div>' +
+          '<div class="d">needs ' + parts.join(' · ') + '</div>' +
+          '<div class="meta" style="margin-top:5px"><span class="btn' + (can ? ' prim' : ' dis') + '" data-craft="' + r.id + '">' +
+          (can ? 'MAKE IT' : (!here ? 'NEEDS A BENCH' : 'NOT ENOUGH')) + '</span></div></div>'
+      };
+    };
+    const section = (title, note, list) => {
+      const rows = list.map(row);
+      /* what you can make now goes to the top */
+      rows.sort((a, b) => (b.can ? 1 : 0) - (a.can ? 1 : 0));
+      return '<h3 style="color:var(--amber);font-size:11px;letter-spacing:.14em;margin:10px 0 3px">' + title + '</h3>' +
+        '<p class="muted" style="font-size:10px;line-height:1.6;margin:0 0 7px">' + note + '</p>' +
+        rows.map((x) => x.html).join('');
+    };
+    const hand = VG.craftRecipes.filter((r) => r.station !== 'bench');
+    const benchR = VG.craftRecipes.filter((r) => r.station === 'bench');
+    let benchNote;
+    if (bench) benchNote = 'You are at the ' + VG.htmlEscape(bench.name) + '. Everything below can be made here.';
+    else {
+      const nb = VG.nearestBench ? VG.nearestBench(p, VG.World) : null;
+      benchNote = 'These need a workbench, and a bench is inside a building: go in, stand near it, press K.' +
+        (nb ? ' <b style="color:var(--ink)">Nearest: ' + VG.htmlEscape(nb.poi.name) + ', ' + Math.round(nb.dist) + 'm ' + nb.dir + '.</b>' : '');
     }
-    if (!bench) {
-      h += '<p class="muted" style="margin-top:8px">A bench is a place you go. The depot press, the market stall, the substation and the fuel stop have one.</p>';
-    }
+    let h = '<p class="muted" style="font-size:10px;line-height:1.6;margin:0 0 4px">Scrap comes from crates and from what you put down. ' +
+      'Green is what you have enough of; red is what you are short of.</p>';
+    h += section('BY HAND — ANYWHERE', 'Made where you stand, from what is in your pack.', hand);
+    h += section('AT A WORKBENCH', benchNote, benchR);
     body.innerHTML = h;
     body.querySelectorAll('[data-craft]').forEach((e) => {
       e.onclick = () => {
         const r = VG.craftRecipes.find((x) => x.id === e.getAttribute('data-craft'));
         if (!r) return;
-        if (!VG.canCraft(p, r)) { VG.log('That needs a bench. Find one.', 'bad'); return; }
-        for (const k in r.need) if ((p.inv[k] || 0) < r.need[k]) { VG.log('Not enough materials.', 'bad'); return; }
-        for (const k in r.need) VG.invRemove(p, k, r.need[k]);
-        VG.invAdd(p, r.out, r.qty);
-        VG.log('Crafted ' + (VG.item(r.out) ? VG.item(r.out).name : r.out) + ' x' + r.qty + '.', 'good');
+        const res = VG.craft(p, r);
+        if (!res.ok) {
+          VG.log(res.why === 'bench' ? 'That needs a bench. The sheet says where the nearest one is.' : 'Not enough materials.', 'bad');
+          return;
+        }
+        const made = VG.item(r.out);
+        VG.log('Made ' + (made ? made.name : r.out) + ' x' + r.qty + '.' +
+          (made && made.cat === 'ammo' ? ' You have ' + (p.ammo[r.out] || 0) + '.' : ''), 'good');
+        if (VG.FX) VG.FX.loot(r.out, r.qty);
         VG.renderCraft();
       };
     });
@@ -1017,6 +1069,26 @@ window.VG = window.VG || {};
       h += '<div style="height:18px"></div>';
     }
 
+    /* ---------- how hard the flats push ---------- */
+    if (VG.FIGHT) {
+      h += '<h3 style="color:var(--amber);font-size:11px;letter-spacing:.14em;margin:0 0 5px">FIGHTING</h3>';
+      h += '<p class="muted" style="font-size:10px;line-height:1.6;margin:0 0 11px">' +
+        'How fast the things on the flats come at you and how hard they hit. It changes nothing about the files.</p>';
+      for (const key of ['gentle', 'fair', 'harsh']) {
+        const F = VG.FIGHT[key];
+        const on = VG.fightMode === key;
+        h += '<div class="optrow"><div class="lbl">' + F.label + '</div>' +
+          '<div class="btn' + (on ? ' prim' : '') + '" data-fight="' + key + '">' + (on ? 'SELECTED' : 'SELECT') + '</div></div>' +
+          '<div class="hint">' + F.blurb + '</div>';
+      }
+      const as = !!VG.aimAssist;
+      h += '<div class="optrow"><div class="lbl">Aim help</div>' +
+        '<div class="btn' + (as ? ' prim' : '') + '" id="opt-assist">' + (as ? 'ON — CLICK TO TURN OFF' : 'OFF — CLICK TO TURN ON') + '</div></div>' +
+        '<div class="hint">Point at or near something and the round is sent to where it will be when it arrives. ' +
+        'Off, the round goes exactly at the reticle and you lead a moving target yourself.</div>';
+      h += '<div style="height:18px"></div>';
+    }
+
     /* ---------- how it handles ---------- */
     h += '<h3 style="color:var(--amber);font-size:11px;letter-spacing:.14em;margin:0 0 5px">CONTROLS</h3>';
     const mm = VG.moveMode === 'screen' ? 'screen' : 'pointer';
@@ -1037,6 +1109,11 @@ window.VG = window.VG || {};
       });
       const sb = document.getElementById('opt-shake');
       if (sb) sb.onclick = () => { if (VG.FX) VG.FX.setShake(!VG.FX.shakeOn); VG.renderOptions(); };
+      body.querySelectorAll('[data-fight]').forEach((el) => {
+        el.onclick = () => { VG.setFightMode(el.getAttribute('data-fight')); VG.renderOptions(); };
+      });
+      const ab = document.getElementById('opt-assist');
+      if (ab) ab.onclick = () => { VG.setAimAssist(!VG.aimAssist); VG.renderOptions(); };
       body.querySelectorAll('[data-int]').forEach((el) => {
         el.onclick = () => {
           const k = el.getAttribute('data-int');

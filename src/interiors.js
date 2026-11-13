@@ -769,7 +769,7 @@ window.VG = window.VG || {};
     const door = INT.doorOf(tpl);
     const dd = VG.dist(p.x, p.y, door.x, door.y);
     if (dd < INT.EXIT_REACH) return { kind: 'exit', obj: INT.active.poi, dist: dd };
-    let best = null, bd = 58;
+    let best = null, bd = 1e9;
     const cs = INT.active.containers;
     for (let i = 0; i < cs.length; i++) {
       const c = cs[i];
@@ -777,8 +777,47 @@ window.VG = window.VG || {};
          crate you can reach - see VG.crateSearchable */
       if (VG.crateSearchable ? !VG.crateSearchable(c, p) : c.opened) continue;
       const d = VG.dist(p.x, p.y, c.ix, c.iy);
+      if (!INT.canReach(tpl, p, c, d)) continue;
       if (d < bd) { bd = d; best = { kind: 'container', obj: c, dist: d }; }
     }
     return best;
+  };
+
+  /* Can the player, standing where they are, put a hand on this crate?
+     The rule used to be "within 58 of it", measured from the middle of the
+     player to the middle of the crate. That works for a crate on the floor
+     and for one on a narrow counter. It does not work for a crate in the
+     middle of a big table: the table is solid, so the nearest place to stand
+     is its edge, and on the round table in the relay room that edge is
+     further than 58 from the crate on every side. The crate was drawn, it
+     glinted, and it could not be opened from anywhere.
+
+     So a crate that sits on a piece of furniture is reached by standing AT
+     that furniture: close to its edge, and no further from the crate than
+     the furniture is deep. A crate on the floor keeps the old rule. */
+  INT.REACH = 58;
+  INT.REACH_EDGE = 36;
+  INT.furnUnder = function (tpl, x, y) {
+    const f = tpl.furn || [];
+    let best = null;
+    for (let i = 0; i < f.length; i++) {
+      const g = f[i];
+      if (g.ns) continue;
+      if (x < g.x || x > g.x + g.w || y < g.y || y > g.y + g.h) continue;
+      /* the smallest thing it is on, if two overlap */
+      if (!best || g.w * g.h < best.w * best.h) best = g;
+    }
+    return best;
+  };
+  INT.canReach = function (tpl, p, c, d) {
+    if (typeof d !== 'number') d = VG.dist(p.x, p.y, c.ix, c.iy);
+    if (d < INT.REACH) return true;
+    const g = INT.furnUnder(tpl, c.ix, c.iy);
+    if (!g) return false;
+    /* how far the player is from the edge of the thing the crate is on */
+    const gx = Math.max(g.x - p.x, 0, p.x - (g.x + g.w));
+    const gy = Math.max(g.y - p.y, 0, p.y - (g.y + g.h));
+    if (Math.hypot(gx, gy) > INT.REACH_EDGE) return false;
+    return d < INT.REACH + Math.min(g.w, g.h);
   };
 })(window.VG);

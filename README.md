@@ -66,6 +66,7 @@ itself.
 | **Save** | The survey keeps its own notes: it saves every minute, at every door, when a file closes and when the tab is closed. `F` still saves by hand. The title screen says what is on file and offers **Continue** or **Start a new survey**. |
 | **Grades** | Everything the survey is made of pays experience - a place charted, a crate searched, evidence read, a question answered, a thing put down, a file closed. A promotion carries more (+6 load) and takes more (+8 health), and puts you back on your feet. |
 | **Feel** | A shot kicks, a hit throws sparks, a kill holds the world for a beat. What you pick up shows as a chip in its rarity colour; a charted place, a piece of evidence, a surprise find and a closed file each get a banner. Unsearched crates glint. Screen shake can be switched off in Options. |
+| **Fighting** | Something that notices you stops and looks first - a `!` goes up over it - and that beat is when the gun comes up. A hit stops it and shoves it back, and a hit during the windup breaks the lunge. Shots at or near a moving thing are led for you (aim help, switchable). Options has **Gentle / Fair / Harsh**; Fair is the default and lets you back away from a Rusted while you shoot. You start with eighteen rounds and three dressings; an empty gun is swung like a club. |
 | **Walking** | Options (`O`) has both: walk toward the pointer (the default), or classic WASD where W is up the screen. |
 | **Sound** | Music and effects are **synthesised live in the browser** with the Web Audio API. There are no audio files anywhere in this project. Four independent layers — mixer, music, wind, effects — each on its own slider under `O`. The ambience reacts to the hour and the weather, and a reactor hum fades in as you approach Copper Mesa Station. `N` mutes. |
 | **Onboarding** | `H` opens the Field Manual: every control, a Survival table that says what drains each need and how to put it back, plus a checklist that ticks off as you learn the mechanics. A single line at the bottom of the screen tells you the next thing to try. |
@@ -320,7 +321,10 @@ The site itself is verified to run from `file://` as well, with a clean console.
 | `E` | search a container · survey a location · answer a distress call · go through a door |
 | `ESC` | close a panel · step back outside if you are inside a building |
 | `R` | draw water at a well or a water tower |
-| `1`–`5` | hotbar · `Space` to use/equip |
+| mouse wheel · `Z` `X` | step along the hotbar - a weapon you land on is in your hand at once |
+| `1`–`5` | jump to a hotbar slot · `Space` or right click to eat, drink or dress a wound |
+| `Q` | patch up with the dressing that fits the wound, whatever slot is selected |
+| `K` | make things: rounds and dressings by hand anywhere, guns and more at a workbench |
 | `Tab` | inventory |
 | `J` | journal — cases, evidence, deductions, reading |
 | `M` | map |
@@ -464,6 +468,7 @@ node test/interiors.js
 node test/weapons.js
 node test/cases.js
 node test/feel.js
+node test/play.js
 ```
 
 `cases.js` validates **the search loop**, because it is the one system in the game that cannot be

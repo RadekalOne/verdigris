@@ -4,6 +4,7 @@ window.VG = window.VG || {};
   'use strict';
 
   VG.Player = null;
+  VG.START_ROUNDS = 18;
 
   VG.newPlayer = function (world) {
     const p = {
@@ -37,7 +38,7 @@ window.VG = window.VG || {};
     p.inv['scrap_cloth'] = 4;
     p.inv['scrap_ceramic'] = 2;
     p.inv['aid_canteen'] = 1;
-    p.inv['aid_field_dressing'] = 1;
+    p.inv['aid_field_dressing'] = 3;
     /* The gun comes first. The player used to start with nothing but a
        torch - a swung weapon with a 40m reach - so the first fight in the
        flats was a fight they could only finish with their hands, and no
@@ -56,8 +57,10 @@ window.VG = window.VG || {};
     /* slot 5 is left empty on purpose: the first thing you find has a home */
     p.inv['wpn_scrap_torch'] = 1;
     p.inv['wpn_long_horn'] = 1;
-    p.inv['ammo_slug'] = 6;
-    p.ammo['ammo_slug'] = 6;
+    /* Eighteen rounds, not six. Six was two kills at perfect aim and then a
+       walk to a bench the player had never seen. */
+    p.inv['ammo_slug'] = VG.START_ROUNDS;
+    p.ammo['ammo_slug'] = VG.START_ROUNDS;
     p.inv['ammo_coin'] = 6;
     /* the coins go into the ammo counter as well as the pack, or the sling
        reports itself empty while six of them sit in the inventory */
@@ -268,7 +271,76 @@ window.VG = window.VG || {};
     if (!it) return null;
     if (it.cat === 'ammo') return p.ammo[id] || 0;
     if (it.cat === 'weapon' && VG.isRangedWeapon(it)) return p.ammo[it.ammo] || 0;
+    /* and a dressing shows how many are left, for the same reason */
+    if (it.cat === 'aid' && !it.passive) return p.inv[id] || 0;
     return null;
+  };
+
+  /* ---------- the bar ---------- */
+  /* Choosing a slot used to be half of a two-step: press the number, then
+     press SPACE to put the thing in your hand. In a fight that is one key
+     too many. A weapon you select is a weapon you are holding. Food and
+     dressings still wait for SPACE (or the right button) - selecting a tin
+     should not eat it. */
+  VG.selectSlot = function (p, i) {
+    if (!p || !p.hotbar) return false;
+    if (i < 0 || i >= p.hotbar.length) return false;
+    p.sel = i;
+    const id = p.hotbar[i];
+    const it = id ? VG.item(id) : null;
+    if (it && it.cat === 'weapon') p.weapon = id;
+    return true;
+  };
+  /* The wheel walks along the bar and skips the empty slots, so two turns
+     of it never land on nothing. */
+  VG.cycleSlot = function (p, dir) {
+    if (!p || !p.hotbar) return false;
+    const n = p.hotbar.length;
+    dir = dir < 0 ? -1 : 1;
+    for (let k = 1; k <= n; k++) {
+      const i = (((p.sel + dir * k) % n) + n) % n;
+      if (p.hotbar[i]) return VG.selectSlot(p, i);
+    }
+    return false;
+  };
+
+  /* ---------- patching up ---------- */
+  /* Healing was: find the dressing in the bar, press its number, press
+     SPACE - while something is hitting you. One key now. It picks the
+     dressing that wastes least: the biggest one that fits the wound, or the
+     smallest one you have if they are all too big. */
+  VG.healItems = function (p) {
+    const out = [];
+    for (const id in (p.inv || {})) {
+      if (!(p.inv[id] > 0)) continue;
+      const it = VG.item(id);
+      if (it && it.cat === 'aid' && !it.passive && it.stats && it.stats.heal > 0) out.push(it);
+    }
+    out.sort((a, b) => a.stats.heal - b.stats.heal);
+    return out;
+  };
+  VG.healCount = function (p) {
+    let n = 0;
+    for (const it of VG.healItems(p)) n += p.inv[it.id] || 0;
+    return n;
+  };
+  VG.quickHeal = function (p) {
+    p = p || VG.Player;
+    if (!p) return false;
+    const say = (m, c) => { if (VG.log) VG.log(m, c); };
+    const missing = (p.maxhp || 100) - p.hp;
+    if (missing < 1) { say('You are not hurt.', 'muted'); return false; }
+    const have = VG.healItems(p);
+    if (!have.length) {
+      say('Nothing to patch up with. Press K: two Field Dressings from two cloth, made by hand.', 'bad');
+      return false;
+    }
+    let pick = have[0];
+    for (const it of have) if (it.stats.heal <= missing + 4) pick = it;
+    const before = p.hp;
+    if (!VG.useItem(pick.id, p)) return false;
+    say('Patched up: +' + Math.round(p.hp - before) + ' health. ' + VG.healCount(p) + ' left.', 'good');
+    return true;
   };
 
   /* Use a carried item. This changes the player - it eats, it heals, it
@@ -518,11 +590,20 @@ window.VG = window.VG || {};
      circle that is tested against every wall and every piece of furniture
      and slides along them. The needs still tick - you get thirsty in a
      diner - but the dose does not, because you are out of the wind. */
+  VG.INDOOR = { pace: 0.94, sprint: 1.35 };
+  VG.indoorPace = function () {
+    const z = (VG.INT && VG.INT.zoom > 1) ? VG.INT.zoom : 1;
+    return VG.INDOOR.pace / z;
+  };
   VG.updatePlayerInterior = function (p, dt, input, room) {
     if (!room) return;
     const solids = room.solids || [];
     const tpl = room.tpl;
-    const sp = (VG.sprint && p.stam > 2 ? p.speed * 1.55 : p.speed) * 0.94;
+    /* A room is drawn up to twice the size of the flats, so the same walking
+       pace crossed the screen twice as fast in here as it did out there -
+       the figure skated across a diner in a second. The pace is divided by
+       the zoom, so a step looks the same length indoors and out. */
+    const sp = (VG.sprint && p.stam > 2 ? p.speed * VG.INDOOR.sprint : p.speed) * VG.indoorPace();
     const mv = VG.moveVector(p, input);
     if (mv.moving) {
       /* The move is taken in short sub-steps. A single large step can
@@ -652,10 +733,93 @@ window.VG = window.VG || {};
      ground back, and the lunge is dodgeable, so the answer is never "run
      forever". A sprint still outruns every one of them, but a sprint is
      not a thing you can do for four minutes. */
-  VG.ENEMY_SPEED = { rusted: 138, warden: 152, drover: 170 };
+  /* That was the theory. In play it meant a Rusted went from noticing you
+     to hitting you in a second and a half, with a revolver that fires every
+     three quarters of a second - nobody shot anything before it was on top
+     of them. So how hard the flats push is a setting now (Options), and the
+     default lets you fight:
+
+     - they are slower than your walk, so backing away while you shoot works;
+     - when one first notices you it stops and stares for a beat (`beat`)
+       before it comes, which is the time to raise the gun;
+     - the old numbers are still here, as Harsh. */
+  VG.FIGHT = {
+    gentle: {
+      label: 'Gentle', speed: { rusted: 92, warden: 102, drover: 118 }, dmg: 0.6, beat: 1.2,
+      blurb: 'They are slow, they hit softly, and they take a long look before they come. For reading the flats rather than fighting them.'
+    },
+    fair: {
+      label: 'Fair', speed: { rusted: 108, warden: 118, drover: 140 }, dmg: 1, beat: 0.8,
+      blurb: 'Slower than your walk, except the Drover. You have time to aim, and backing away while you shoot works.'
+    },
+    harsh: {
+      label: 'Harsh', speed: { rusted: 138, warden: 152, drover: 170 }, dmg: 1, beat: 0.3,
+      blurb: 'Everything outruns a walk and comes the moment it sees you. Sprint, or shoot first.'
+    }
+  };
+  VG.fightMode = 'fair';
+  VG.fight = function () { return VG.FIGHT[VG.fightMode] || VG.FIGHT.fair; };
+  VG.setFightMode = function (m) {
+    VG.fightMode = VG.FIGHT[m] ? m : 'fair';
+    try { localStorage.setItem('verdigris.fight', VG.fightMode); } catch (e) { /* private mode */ }
+  };
+  VG.loadFightMode = function () {
+    let v = null;
+    try { v = localStorage.getItem('verdigris.fight'); } catch (e) { /* private mode */ }
+    VG.fightMode = VG.FIGHT[v] ? v : 'fair';
+  };
+  /* the default table, kept under its old name */
+  VG.ENEMY_SPEED = VG.FIGHT.fair.speed;
 
   VG.enemySpeed = function (kind) {
-    return VG.ENEMY_SPEED[kind] || VG.ENEMY_SPEED.rusted;
+    const s = VG.fight().speed;
+    return s[kind] || s.rusted;
+  };
+
+  /* ---------- helping the shot land ---------- */
+  /* "The round goes exactly where the reticle is" sounds fair and is not:
+     the round takes a quarter of a second to cross 200 metres, and by then
+     a walking Rusted has moved three body widths. To hit one you had to aim
+     at where it was going to be, and nothing told you that.
+     With this on, a shot aimed at or near something is sent to where that
+     thing will be when the round arrives. You still choose the target and
+     you still have to be pointing at it; the lead is done for you. */
+  VG.ASSIST = { near: 48, cone: 0.11 };
+  VG.aimAssist = true;
+  VG.setAimAssist = function (on) {
+    VG.aimAssist = !!on;
+    try { localStorage.setItem('verdigris.assist', VG.aimAssist ? '1' : '0'); } catch (e) { /* private mode */ }
+  };
+  VG.loadAimAssist = function () {
+    let v = null;
+    try { v = localStorage.getItem('verdigris.assist'); } catch (e) { /* private mode */ }
+    VG.aimAssist = v !== '0';
+  };
+  VG.assistTarget = function (p, world, m, reach, sp) {
+    if (!VG.aimAssist || !p || !world || !world.enemies || !m) return null;
+    const aim = Math.atan2(m.y - p.y, m.x - p.x);
+    let best = null, bs = 1e9;
+    for (const e of world.enemies) {
+      if (!e || e.dead) continue;
+      const ex = e.x * VG.TILE, ey = e.y * VG.TILE;
+      const d = VG.dist(p.x, p.y, ex, ey);
+      if (d > reach + 30 || d < 1) continue;
+      const a = Math.atan2(ey - p.y, ex - p.x);
+      const da = Math.abs(((a - aim + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      const dm = VG.dist(m.x, m.y, ex, ey);
+      if (dm > VG.ASSIST.near && da > VG.ASSIST.cone) continue;
+      const score = Math.min(dm / VG.ASSIST.near, da / VG.ASSIST.cone);
+      if (score < bs) { bs = score; best = e; }
+    }
+    if (!best) return null;
+    const bx = best.x * VG.TILE, by = best.y * VG.TILE;
+    const vx = best.vx || 0, vy = best.vy || 0;
+    let tx = bx, ty = by;
+    for (let i = 0; i < 2; i++) {
+      const t = VG.dist(p.x, p.y, tx, ty) / (sp || 760);
+      tx = bx + vx * t; ty = by + vy * t;
+    }
+    return { e: best, x: tx, y: ty, ang: Math.atan2(ty - p.y, tx - p.x) };
   };
 
   /* The lunge. The windup is the whole of it: the Rusted stops, and the
@@ -663,7 +827,7 @@ window.VG = window.VG || {};
      was facing when it stopped. Walk out of the lane and it misses. A
      lunge you cannot dodge is not a threat, it is a tax. */
   VG.LUNGE = {
-    windup: 0.55,   /* how long the tell is on the ground */
+    windup: 0.7,    /* how long the tell is on the ground */
     range: 120,     /* how close it has to be to start one */
     speed: 420,     /* how fast the lane is travelled */
     dist: 130,      /* how far down the lane it goes */

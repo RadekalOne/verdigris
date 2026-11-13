@@ -247,13 +247,27 @@ console.log('\n== the dark helps them, not you ==');
   VG.state.time = 9 * 3600;
 }
 
-console.log('\n== the rusted are faster than you walk ==');
+console.log('\n== how hard the flats push is a setting ==');
 {
+  /* Rad, 2026-11-13: "the enemy attacks approach super fast that there is no
+     chance you shoot them before they get on top of you". The old rule here
+     was "a rusted outruns a walking player". That rule is Harsh now, and the
+     default lets a player back away and shoot. */
+  VG.fightMode = 'harsh';
   ok(VG.enemySpeed('rusted') > WALK_SPEED,
-    'a rusted outruns a walking player (' + VG.enemySpeed('rusted') + ' against ' + WALK_SPEED + ')');
+    'on Harsh a rusted outruns a walking player (' + VG.enemySpeed('rusted') + ' against ' + WALK_SPEED + ')');
+  VG.fightMode = 'fair';
+  ok(VG.enemySpeed('rusted') < WALK_SPEED,
+    'on Fair a walking player can back away from a rusted (' + VG.enemySpeed('rusted') + ' against ' + WALK_SPEED + ')');
+  ok(VG.enemySpeed('warden') < WALK_SPEED, 'and from a warden (' + VG.enemySpeed('warden') + ')');
   ok(VG.enemySpeed('warden') > VG.enemySpeed('rusted'), 'a warden is faster than a rusted');
   ok(VG.enemySpeed('drover') > VG.enemySpeed('warden'), 'a drover is faster than a warden');
-  ok(VG.enemySpeed('drover') < 205, 'but a sprinter still outruns them all (' + VG.enemySpeed('drover') + ')');
+  ok(VG.enemySpeed('drover') > WALK_SPEED, 'and a drover still has to be shot or sprinted from');
+  for (const k of ['gentle', 'fair', 'harsh']) {
+    VG.fightMode = k;
+    ok(VG.enemySpeed('drover') < 205, 'a sprinter outruns them all on ' + k + ' (' + VG.enemySpeed('drover') + ')');
+  }
+  VG.fightMode = 'fair';
 }
 
 console.log('\n== and it tells you before it lunges ==');

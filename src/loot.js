@@ -109,15 +109,74 @@ window.VG = window.VG || {};
     { id: 'c_bandage', out: 'aid_field_dressing', qty: 2, need: { scrap_cloth: 2 }, station: 'field' },
     { id: 'c_stim', out: 'aid_saline_stim', qty: 1, need: { scrap_ceramic: 2, scrap_copper: 1 }, station: 'field' },
     { id: 'c_water', out: 'aid_canteen', qty: 1, need: { scrap_ceramic: 1, scrap_plastic: 1 }, station: 'field' },
-    { id: 'c_ammo_slug', out: 'ammo_slug', qty: 12, need: { scrap_copper: 2, scrap_gear: 1 }, station: 'bench' },
+    /* Rounds by hand. Ammunition used to be bench-only, and a bench is
+       inside a building the player may not have found - so the first time
+       the revolver ran dry there was nothing to do about it. Hand-loading is
+       the poor version: half the rounds for the copper. The bench is still
+       where you go to do it properly. */
+    { id: 'c_ammo_slug_hand', out: 'ammo_slug', qty: 6, need: { scrap_copper: 2 }, station: 'field' },
+    { id: 'c_ammo_slug', out: 'ammo_slug', qty: 14, need: { scrap_copper: 2, scrap_gear: 1 }, station: 'bench' },
+    { id: 'c_ammo_rifle', out: 'ammo_rifle', qty: 10, need: { scrap_copper: 3, scrap_gear: 1 }, station: 'bench' },
     { id: 'c_ammo_shell', out: 'ammo_shell', qty: 8, need: { scrap_copper: 3, scrap_gear: 2 }, station: 'bench' },
     { id: 'c_coin', out: 'ammo_coin', qty: 12, need: { scrap_copper: 2, scrap_gear: 1 }, station: 'bench' },
     { id: 'c_scrap_melee', out: 'wpn_scrap_torch', qty: 1, need: { scrap_gear: 4, scrap_cloth: 1 }, station: 'bench' },
     { id: 'c_radfilter', out: 'aid_filter', qty: 1, need: { scrap_cloth: 3, scrap_glass: 1, scrap_ceramic: 1 }, station: 'bench' },
     { id: 'c_ration', out: 'aid_ration_tin', qty: 1, need: { scrap_cloth: 1, scrap_ceramic: 1 }, station: 'bench' },
     { id: 'c_flare', out: 'ammo_flare', qty: 4, need: { scrap_glass: 2, scrap_copper: 2 }, station: 'bench' },
-    { id: 'c_draught', out: 'aid_chalk_draught', qty: 1, need: { scrap_ceramic: 2, scrap_glass: 1 }, station: 'bench' }
+    { id: 'c_draught', out: 'aid_chalk_draught', qty: 1, need: { scrap_ceramic: 2, scrap_glass: 1 }, station: 'bench' },
+    /* Guns. The only weapon a bench could make was the torch you already
+       had, so "can I make a weapon" had the answer no. These are the plain
+       ones: the good guns are still found, not made. */
+    { id: 'c_wpn_sling', out: 'wpn_rivet_sling', qty: 1, need: { scrap_gear: 3, scrap_cloth: 2 }, station: 'bench' },
+    { id: 'c_wpn_sawn', out: 'wpn_sawn_off', qty: 1, need: { scrap_gear: 5, scrap_copper: 4 }, station: 'bench' },
+    { id: 'c_wpn_carbine', out: 'wpn_survey_carbine', qty: 1, need: { scrap_gear: 7, scrap_copper: 5, scrap_plastic: 2 }, station: 'bench' }
   ];
+
+  /* What a thing does, in the fewest words. The workbench listed names and
+     nothing else, so the player was asked to spend copper on a "Saline Stim"
+     without being told it heals. */
+  VG.itemEffect = function (it, p) {
+    if (!it) return '';
+    const s = it.stats || {};
+    const out = [];
+    if (it.cat === 'weapon') {
+      out.push('damage ' + (s.dmg || 0));
+      out.push((VG.isRangedWeapon && VG.isRangedWeapon(it) ? 'fires to ' : 'swung at ') + (s.range || 0) + 'm');
+      if (it.ammo && VG.isRangedWeapon && VG.isRangedWeapon(it) && VG.item(it.ammo)) out.push('takes ' + VG.item(it.ammo).name);
+      return out.join(' · ');
+    }
+    if (it.cat === 'ammo') {
+      const guns = (VG.ITEMS || []).filter((w) => w.cat === 'weapon' && w.ammo === it.id && VG.isRangedWeapon && VG.isRangedWeapon(w));
+      if (!guns.length) return 'ammunition';
+      const mine = p ? guns.filter((w) => (p.inv[w.id] || 0) > 0) : [];
+      const show = (mine.length ? mine : guns).slice(0, 3).map((w) => w.name);
+      return 'rounds for ' + show.join(', ') + (mine.length ? '' : ' (you carry none of these)');
+    }
+    if (it.passive) return it.passiveNote || 'works while you carry it';
+    if (s.heal > 0) out.push('+' + s.heal + ' health');
+    if (s.food > 0) out.push('+' + s.food + ' food');
+    if (s.thirst > 0) out.push('+' + s.thirst + ' water');
+    if (s.rad < 0) out.push(s.rad + ' dose');
+    if (s.armor > 0) out.push('armour ' + s.armor);
+    return out.join(' · ');
+  };
+
+  /* The nearest building with a bench in it, and which way it is. */
+  VG.nearestBench = function (p, world) {
+    if (!p || !world || !world.pois || !VG.INTERIOR_BY_KEY) return null;
+    const inside = !!(VG.INT && VG.INT.active);
+    const px = inside && typeof p.wx === 'number' ? p.wx : p.x;
+    const py = inside && typeof p.wy === 'number' ? p.wy : p.y;
+    let best = null;
+    for (const poi of world.pois) {
+      const tpl = VG.INTERIOR_BY_KEY[poi.type];
+      if (!tpl || !tpl.bench) continue;
+      const dx = poi.x * VG.TILE - px, dy = poi.y * VG.TILE - py;
+      const d = Math.hypot(dx, dy);
+      if (!best || d < best.dist) best = { poi: poi, dist: d, dir: VG.compassDir ? VG.compassDir(dx, dy) : '', name: tpl.benchName || 'workbench' };
+    }
+    return best;
+  };
 
   /* ---------- where you can make things ---------- */
   /* The bench the player is standing at, if any. Fieldcraft - a bandage, a
@@ -140,5 +199,16 @@ window.VG = window.VG || {};
     if (!r) return false;
     if (r.station !== 'bench') return true;
     return !!VG.benchAt(p, VG.World);
+  };
+
+  /* Make it. This changes the pack, so it lives here and not in the click
+     handler that used to do it - the workbench sheet only draws the result. */
+  VG.craft = function (p, r) {
+    if (!p || !r) return { ok: false, why: 'none' };
+    if (!VG.canCraft(p, r)) return { ok: false, why: 'bench' };
+    for (const k in r.need) if ((p.inv[k] || 0) < r.need[k]) return { ok: false, why: 'short' };
+    for (const k in r.need) VG.invRemove(p, k, r.need[k]);
+    VG.invAdd(p, r.out, r.qty);
+    return { ok: true, out: r.out, qty: r.qty };
   };
 })(window.VG);
