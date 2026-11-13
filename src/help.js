@@ -32,8 +32,10 @@ window.VG = window.VG || {};
         ['A D  /  Left Right', 'Sidestep across the way you are facing'],
         ['SHIFT', 'Sprint. Costs stamina; walking is free'],
         ['left click', 'Fire the weapon in your hand, or swing it'],
-        ['1 - 5', 'Choose a hotbar slot'],
-        ['SPACE', 'Equip or use the selected item'],
+        ['wheel  /  Z X', 'Step along the hotbar. A weapon you land on is in your hand'],
+        ['1 - 5', 'Jump straight to a hotbar slot'],
+        ['SPACE  /  right click', 'Use the selected item: eat, drink, dress a wound'],
+        ['Q', 'Patch up with the best dressing you carry, whatever is selected'],
         ['M', 'Map. It fills in as you walk']
       ]
     },
@@ -46,7 +48,7 @@ window.VG = window.VG || {};
         ['TAB', 'Field Kit: gear, materials, aids, intel'],
         ['C', 'Field Codex: factions and contracts'],
         ['B', 'Contracts'],
-        ['K', 'Workbench and crafting'],
+        ['K', 'Make things: rounds and dressings by hand, guns at a bench'],
         ['F', 'Save'],
         ['H', 'This help'],
         ['O', 'Options: mixer, sound layers, and how alive the flats are'],
@@ -66,7 +68,7 @@ window.VG = window.VG || {};
     ['Water', 'Time, and faster while you move. The fastest drain of all.',
       'Canteen (+25) or Survey Office Pack (+20). Craft a Canteen from ceramic and plastic. Press R at any well or water tower to drink (+35).'],
     ['Health', 'Starvation, dehydration, dose, and the Drovers.',
-      'Field Dressing (+18), Saline Stim (+45), Splint Kit (+30), Surgical Tray (+70). Also heals slowly on its own while you are fed, watered and under 40 dose.'],
+      'Press Q. It uses the dressing that fits the wound - Field Dressing (+18), Splint Kit (+30), Saline Stim (+45), Surgical Tray (+70). You start with three Field Dressings and K makes two more from two cloth, anywhere. You also heal on your own, about one point a second, as long as food and water are above a quarter and dose is under 40 - so eating and drinking is healing too.'],
     ['Dose', 'The refinery, the reactor yard, ash haze, and rusty well water.',
       'Chalk Draught (-20), Saline Stim (-6), Surgical Tray (-12). Carry a Survey Dust Filter and it builds a third as fast.']
   ];
@@ -75,16 +77,18 @@ window.VG = window.VG || {};
      have to learn by being hit by them: the tell, the drop, the pack, and
      the bench. */
   const FLATS = [
-    ['The Rusted are faster than you walk',
-      'A rusted walks at 138, a warden at 152, a drover at 170. You walk at 132 and sprint at 205 - so a sprint outruns every one of them, but a sprint is not a thing you can do for four minutes. You can also fight, or break the line of sight. Standing still is not one of the options.'],
+    ['They look before they come',
+      'When something first notices you it stops, and a ! goes up over it. That beat is yours - it is when the gun comes up. Then it walks at you. On Fair a rusted walks at 108 and a warden at 118, both slower than your 132, so backing away while you shoot works; a drover does 140 and has to be shot or sprinted from. Options (O) has Gentle and Harsh if that is too much or too little.'],
+    ['A hit stops it',
+      'Something you hit stops for a moment and is shoved back, and a hit while it is winding up breaks the lunge. Shooting the thing that is about to jump you is the right answer. A warden is heavier: it barely slows and its lunge cannot be broken.'],
     ['The lunge',
       'When one gets close it stops, and the lane it will travel down is drawn on the ground along the direction it was facing when it stopped. Step out of the lane and it misses. The lane is exactly where it will go - it is not a decoration and it does not lie. It cannot lunge again for a few seconds, so a missed lunge is a free window to shoot.'],
     ['They leave what they were made of',
       'A rusted that goes down leaves two to eight units of scrap - copper, cloth, ceramic or gear - and about four on average. A drover leaves about the same, with glass in the pile. A warden leaves about seven, and a few rounds. The contracts ask for exactly this scrap, and the crates used to be the only place any of it came from. The flats are made of the same stuff the crates are made of.'],
     ['Your pack has a limit',
       '140 weight. A crate you cannot empty is not a limit, it is a wall - so when a crate does not fit, what does not fit stays in the crate and you come back for it. Put something down from the Field Kit to make room. The load is printed in the corner when you are carrying too much.'],
-    ['Ammunition is made at a bench',
-      'A bench recipe needs a bench, and a bench is a thing in a room: the depot press, the market stall, the substation bench, the fuel stop bench. Fieldcraft - a bandage, a tin of water - needs nothing but your hands. If a recipe says it needs a bench, you are not standing near one.'],
+    ['Making things (K)',
+      'K opens the sheet anywhere. The top half is made by hand where you stand: dressings from cloth, a canteen, and six revolver rounds from two copper. The bottom half needs a workbench, which is inside a building - the depot press, the market stall, the substation bench, the fuel stop bench - and the sheet names the nearest one and the way to it. A bench makes fourteen rounds from the same copper, rifle rounds, shells, and three plain guns.'],
     ['The buildings that hold the evidence are watched',
       'The buildings a file points you at are not empty. Something is standing in front of them, and it holds its ground: it will not wander off across the flats and leave the door open behind it. Go in prepared.']
   ];
@@ -112,12 +116,12 @@ window.VG = window.VG || {};
      player cannot work out by looking at it: where the round goes, how far
      it reaches, and what a swing is. */
   const SHOOTING = [
-    ['Aiming', 'The mouse is your aim. The reticle sits under the cursor and the round goes exactly there — there is no spread, so if the reticle is on something, you hit it. Your figure turns to face where you are pointing.'],
+    ['Aiming', 'The mouse is your aim and there is no spread. Put the reticle on or near something and the round is sent to where that thing will be when it arrives - you choose the target, the lead is done for you. Aim help can be switched off in Options (O), and then the round goes exactly at the reticle. Your figure turns to face where you are pointing.'],
     ['Firing', 'Left click fires. Hold the mouse down to keep firing at the weapon\'s rate of fire. The number on the weapon in the hotbar is the rounds it has left.'],
     ['Reach', 'A round lives exactly as long as the weapon\'s reach, so the revolver you start with covers 280 metres of flats and a marksman covers 400. Point at something beyond that and the round dies in the air. The hotbar and the Field Kit both print the reach, so you can read it before you shoot rather than after.'],
     ['The notice radius', 'The Rusted see you at 240 metres by day and 300 after dark. Every gun reaches at least as far as the daytime look, so a gun is never a thing you can only use at arm\'s length — but a longer gun lets you open a fight from further out than they can see you. After dark most guns no longer do: the dark is for working, not for standing still. A silenced weapon carries to 120, or 150 after dark.'],
     ['Swinging', 'The torch and the pick mace are swung, not fired. A swing is a short arc in front of you, drawn where it lands. They need no ammunition. The torch burns in the pack as well as in your hand, so you are never without light because you picked up a gun.'],
-    ['Ammunition', 'Rounds are pooled by type and shared between the guns that take them. Craft them at the workbench, or find them. Out of ammunition and the weapon says so.'],
+    ['Ammunition', 'You start with eighteen rounds. Rounds are pooled by type and shared between the guns that take them. Press K to hand-load six more from two copper anywhere, or fourteen at a bench; the things you put down sometimes carry a few. The number on the weapon in the bar is what is left, and the name plate warns you at four. An empty gun is swung like a club - it is a poor one, so switch to the torch with the wheel.'],
     ['Noise', 'A shot carries as far as the round flies, so firing is how a fight starts and not only how it ends. Silenced weapons do not bring the Rusted the way the others do.']
   ];
 
@@ -129,7 +133,7 @@ window.VG = window.VG || {};
     { id: 'moved', keys: ['W', 'S', 'A', 'D'], text: 'The pointer shows where you go: W walks toward it, S walks back, A and D sidestep. Hold SHIFT to sprint. (Prefer W = up? Press O.)' },
     {
       id: 'equipped', keys: ['1-5', 'SPACE', 'TAB'],
-      text: 'Press 1-5 to pick a hotbar slot, then SPACE to use what is in it: a weapon goes in your hand, a tin gets eaten, a canteen gets drunk. Anything else you find lands in your Field Kit (TAB) - click a weapon there to put it in your hand.',
+      text: 'Turn the mouse wheel (or press Z / X, or 1-5) to step along the hotbar. A weapon you land on is in your hand at once; a tin or a canteen waits for SPACE or the right mouse button. Anything else you find lands in your Field Kit (TAB) - click a weapon there to put it in your hand.',
       when: () => {
         const p = VG.Player;
         if (!p || !p.inv) return false;
@@ -145,7 +149,7 @@ window.VG = window.VG || {};
     { id: 'searched', keys: ['E'], text: 'Find something to search. Press E when the prompt appears.' },
     {
       id: 'fired', keys: ['mouse', 'left click'],
-      text: 'The mouse aims and the left button fires. The round goes exactly where the reticle is - no spread - and it dies at the end of your weapon\'s reach, which the hotbar prints. The torch is swung, not fired: a short arc in front of you, and no ammunition.'
+      text: 'The mouse aims and the left button fires - hold it to keep firing. Point at or near something and the shot is led for you. The round dies at the end of your weapon\'s reach, which the hotbar prints. When something sees you a ! goes up over it: that is your moment to shoot. Hurt? Press Q.'
     },
     {
       id: 'entered', keys: ['E'],
@@ -153,7 +157,7 @@ window.VG = window.VG || {};
     },
     {
       id: 'ate', keys: ['SPACE', '1-5'],
-      text: 'SPACE uses what is in the selected hotbar slot - a canteen to drink, a dressing to heal, a ration tin to eat. Press 1-5 to change slot.',
+      text: 'SPACE uses what is in the selected hotbar slot - a canteen to drink, a dressing to heal, a ration tin to eat. The wheel changes slot. Q heals without changing slot at all.',
       when: () => {
         const p = VG.Player;
         if (!p || !p.hotbar) return false;
